@@ -1,6 +1,6 @@
 # Ollama Scanner 节点扫描工具使
 
-![Ollama Scanner](docs/Ollama 节点扫描工具说明.png)
+![Ollama Scanner](docs/Ollama-scanner.png)
 
 [English](docs/README_en.md) · [简体中文](docs/README_zh.md)
 
@@ -25,7 +25,6 @@
   # 运行嗅探器
   /usr/local/bin/ollama-scanner [参数]
   ```
-
 
 ### 基本用法
 
