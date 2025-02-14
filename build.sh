@@ -11,6 +11,7 @@ buildtag_zmap="zmap" # zmap 镜像标签
 
 builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
 builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
+builddir_zmap_arm64="dockerfile-zmap-arm64" # zmap Dockerfile 目录
 
 # 检测并安装 buildah
 check_and_install_buildah() {
@@ -71,6 +72,10 @@ main() {
     # 构建 zmap 镜像
     zmap_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap"
     build_buildah_image $builddir_zmap $zmap_tag
+
+    # 构建 zmap_arm64 镜像
+    zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$builddir_zmap_arm64"
+    build_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag
 
     # 推送 masscan 镜像
     push_buildah_image $masscan_tag

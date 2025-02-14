@@ -102,6 +102,8 @@
 
 ## 如何编译程序本体
 
+- 增加编译 arm64平台嗅探器，arm64架构的程序本体可以直接运行或者直接拉取docker镜像
+
 - 编译所有平台的程序：在终端中运行 make 或 make all 命令，将分别为 macOS、Linux 和 Windows 平台生成对应的可执行文件。
 - 单独编译某个平台的程序：
   - 编译 macOS 平台：make build-macos
