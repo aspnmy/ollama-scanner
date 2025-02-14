@@ -1,6 +1,6 @@
 # 定义可执行文件的名称
 BINARY_NAME_ZMAP := ollama-scanner-zmap
-BINARY_NAME_MASSCAN := ollama-scanner-zmap
+BINARY_NAME_MASSCAN := ollama-scanner-masscan
 # 定义 Go 命令
 GO := go
 
