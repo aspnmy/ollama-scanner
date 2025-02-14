@@ -125,6 +125,10 @@ ip addr show | grep link/ether
 
 ## 如何编译程序本体
 
+- v2.2.3 增加mongoDB驱动,编译时如果mongoDB的所在位置不是本机,可在env.json中指定访问入口,默认访问值为"localhost:27017"
+
+- v2.2.3_docker 部署的时候默认mongoDB版本号v4.4.0,默认访问入口localhost:27017
+
 - 增加编译 arm64平台嗅探器，arm64架构的程序本体可以直接运行或者直接拉取docker镜像
 - 编译所有平台的程序：在终端中运行 make 或 make all 命令，将分别为 macOS、Linux 和 Windows 平台生成对应的可执行文件。
 - 单独编译某个平台的程序：

@@ -8,6 +8,7 @@ buildurl="docker.io" # 镜像推送的 URL 位置
 
 buildtag_masscan="masscan" # masscan 镜像标签
 buildtag_zmap="zmap" # zmap 镜像标签
+buildtag_zmap_arm64="zmap_arm64" # zmap_arm64 镜像标签
 
 builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
 builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
@@ -376,7 +377,7 @@ main() {
 
     # 构建 buildx 跨架构构建zmap_arm64 镜像
     build_platform="linux/arm64"
-    zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$builddir_zmap_arm64"
+    zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap_arm64"
     buildx_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag $buildver $build_platform
 
     # 推送 masscan 镜像
