@@ -13,6 +13,10 @@ builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
 builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
 builddir_zmap_arm64="dockerfile-zmap-arm64" # zmap Dockerfile 目录
 
+# Telegram Bot 配置
+TELEGRAM_BOT_TOKEN="your_telegram_bot_token" # 替换为你的 Telegram Bot Token
+TELEGRAM_CHAT_ID="your_telegram_chat_id" # 替换为你的 Telegram 群组 Chat ID
+
 # 检测并安装 buildah
 check_and_install_buildah() {
     if ! command -v buildah &> /dev/null; then
@@ -57,6 +61,21 @@ push_buildah_image() {
     else
         echo "推送镜像失败，标签为 $tag"
         exit 1
+    fi
+}
+
+# 发送 Telegram 消息
+send_telegram_message() {
+    local message=$1
+    echo "正在发送 Telegram 消息：$message"
+    curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+        -d "chat_id=$TELEGRAM_CHAT_ID" \
+        -d "text=$message" \
+        -d "parse_mode=Markdown"
+    if [ $? -eq 0 ]; then
+        echo "Telegram 消息发送成功。"
+    else
+        echo "Telegram 消息发送失败。"
     fi
 }
 
