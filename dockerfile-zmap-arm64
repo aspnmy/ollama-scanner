@@ -1,5 +1,5 @@
 FROM alpine:latest-arm64
-
-ADD ./Releases/v2.2-zmap/ollama_scanner-linux-arm64 /usr/local/bin/ollama_scanner
+ARG version=v2.2
+ADD ./Releases/${version}/ollama_scanner-linux-arm64 /usr/local/bin/ollama_scanner
 RUN chmod +x /usr/local/bin/ollama_scanner
 
