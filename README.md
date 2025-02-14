@@ -1,4 +1,4 @@
-# Ollama Scanner 节点扫描工具使
+# Ollama Scanner 节点扫描工具使用说明
 
 ![Ollama Scanner](docs/Ollama-scanner.png)
 
@@ -15,9 +15,9 @@
 
 由于win系统下是无法安装zmap的，所以win下有下面几种使用方式：
 
-* 使用masscan版本的嗅探器(通用性更加)
-* 使用wsl模式运行linux版本嗅探器
-* 使用docker容器
+- 使用masscan版本的嗅探器(通用性更加)
+- 使用wsl模式运行linux版本嗅探器
+- 使用docker容器
 
   ```docker
   # 下载镜像
