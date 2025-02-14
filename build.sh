@@ -182,7 +182,9 @@ build_buildah_image() {
     local dockerfile=$1
     local tag=$2
     echo "正在使用 $dockerfile 构建镜像,标签为 $tag..."
+    # shellcheck disable=SC2086
     buildah bud -f $dockerfile -t $tag
+    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功构建镜像,标签为 $tag"
     else
@@ -195,7 +197,9 @@ build_buildah_image() {
 push_buildah_image() {
     local tag=$1
     echo "正在推送镜像,标签为 $tag..."
+    # shellcheck disable=SC2086
     buildah push $tag
+    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功推送镜像,标签为 $tag"
         send_telegram_message "✅ 镜像推送成功:$tag"
@@ -214,6 +218,7 @@ send_telegram_message() {
         -d "chat_id=$TELEGRAM_CHAT_ID" \
         -d "text=$message" \
         -d "parse_mode=Markdown"
+    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "Telegram 消息发送成功."
     else
@@ -236,6 +241,7 @@ publish_to_github_releases() {
 
     # 创建 GitHub Release
     gh release create "$version" "$release_dir"/* --title "Release $version" --notes "Automated release for version $version"
+    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功发布到 GitHub Releases,版本为 $version"
         send_telegram_message "✅ GitHub Releases 发布成功:版本 $version"
@@ -266,20 +272,25 @@ main() {
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
+    # shellcheck disable=SC2086
     build_buildah_image $builddir_masscan $masscan_tag
 
     # 构建 zmap 镜像
     zmap_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap"
+    # shellcheck disable=SC2086
     build_buildah_image $builddir_zmap $zmap_tag
 
     # 构建 zmap_arm64 镜像
     zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$builddir_zmap_arm64"
+    # shellcheck disable=SC2086
     build_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag
 
+    # shellcheck disable=SC2086
     # 推送 masscan 镜像
     push_buildah_image $masscan_tag
 
     # 推送 zmap 镜像
+    # shellcheck disable=SC2086
     push_buildah_image $zmap_tag
 }
 
