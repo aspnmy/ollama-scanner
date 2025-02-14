@@ -291,7 +291,7 @@ main() {
     build_makefile  "$buildver"
 
     # 发布到 GitHub Releases
-    publish_to_github_releases "$buildver" "$release_dir/$buildver"
+    # publish_to_github_releases "$buildver" "$release_dir/$buildver"
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
