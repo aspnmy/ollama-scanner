@@ -58,8 +58,10 @@ push_buildah_image() {
     buildah push $tag
     if [ $? -eq 0 ]; then
         echo "成功推送镜像，标签为 $tag"
+        send_telegram_message "✅ 镜像推送成功：$tag"
     else
         echo "推送镜像失败，标签为 $tag"
+        send_telegram_message "❌ 镜像推送失败：$tag"
         exit 1
     fi
 }
