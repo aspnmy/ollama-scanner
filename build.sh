@@ -6,13 +6,10 @@ buildname="ollama-scanner" # 镜像名称
 buildver="v2.2" # 镜像版本
 buildurl="docker.io" # 镜像推送的 URL 位置
 
-buildtag_masscan="masscan" # masscan 镜像标签
-buildtag_zmap="zmap" # zmap 镜像标签
-buildtag_zmap_arm64="zmap_arm64" # zmap_arm64 镜像标签
 
-builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
-builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
-builddir_zmap_arm64="dockerfile-zmap-arm64" # zmap Dockerfile 目录
+
+
+
 
 TELEGRAM_BOT_TOKEN="your_telegram_bot_token" # Telegram Bot Token
 TELEGRAM_CHAT_ID="your_telegram_chat_id" # Telegram 群组 Chat ID
@@ -41,6 +38,7 @@ init() {
         buildname=$(jq -r '.buildname // empty' "$env_file")
         if [ -n "$buildname" ]; then
             echo "从 env.json 读取 buildname: $buildname"
+
         else
             buildname="ollama-scanner"
         fi
@@ -48,8 +46,27 @@ init() {
         buildver=$(jq -r '.buildver // empty' "$env_file")
         if [ -n "$buildver" ]; then
             echo "从 env.json 读取 buildver: $buildver"
+            # 判断 buildver 是否大于 v2.2.0
+        if printf '%s\n' "$buildver" "v2.2.0" | sort -Vr | head -n 1 | grep -q "$buildver"; then
+                echo "检测到 buildver 小于或等于 v2.2.0,不包含 MongoDB 相关逻辑."
+            builddir_masscan="dockerfile-masscan-mongoDB" # masscan Dockerfile 目录
+            builddir_zmap="dockerfile-zmap-mongoDB" # zmap Dockerfile 目录
+            builddir_zmap_arm64="dockerfile-zmap-arm64-mongoDB" # zmap Dockerfile 目录
+            buildtag_masscan="masscan_mongoDB" # masscan 镜像标签
+            buildtag_zmap="zmap_mongoDB" # zmap 镜像标签
+            buildtag_zmap_arm64="zmap_arm64_mongoDB" # zmap_arm64 镜像标签      
         else
-            buildver="v2.2"
+            builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
+            builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
+            builddir_zmap_arm64="dockerfile-zmap-arm64" # zmap Dockerfile 目录
+            buildtag_masscan="masscan" # masscan 镜像标签
+            buildtag_zmap="zmap" # zmap 镜像标签
+            buildtag_zmap_arm64="zmap_arm64" # zmap_arm64 镜像标签
+        fi
+            
+            
+        else
+            buildver="v2.2.0"
         fi
 
         buildurl=$(jq -r '.buildurl // empty' "$env_file")
@@ -366,6 +383,9 @@ main() {
 
     # 发布到 GitHub Releases
     # publish_to_github_releases "$buildver" "$release_dir/$buildver"
+
+
+    echo "$buildtag_masscan"
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
