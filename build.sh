@@ -255,11 +255,7 @@ publish_to_github_releases() {
     local version=$1
     local release_dir=$2
 
-    # 检查发布目录是否存在
-    if [ ! -d "$release_dir" ]; then
-        echo "错误:发布目录 $release_dir 不存在"
-        exit 1
-    fi
+
 
     echo "正在发布到 GitHub Releases,版本为 $version..."
 
@@ -295,7 +291,7 @@ main() {
     build_makefile  "$buildver"
 
     # 发布到 GitHub Releases
-    publish_to_github_releases "$buildver" "$release_dir"
+    publish_to_github_releases "$buildver" "$release_dir/$buildver"
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
