@@ -168,6 +168,7 @@ build_makefile() {
 
     # 在指定路径下执行 make 命令
     make -C "$(dirname "$makefile")" BIN_VER="$ver"
+    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功构建程序本体,标签为 $ver"
     else
@@ -258,7 +259,7 @@ main() {
     check_and_install_gh
 
     # 使用 make 构建本体
-    build_makefile "./Makefile" "$buildver"
+    build_makefile "Makefile" "$buildver"
 
     # 发布到 GitHub Releases
     publish_to_github_releases "$buildver" "$release_dir"
