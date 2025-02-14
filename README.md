@@ -32,6 +32,12 @@
 
 ### 使用示例
 
+- 指定 IP 地址列表进行扫描：
+
+```bash
+./ollama-scanner -input ip.txt
+```
+
 - 指定网关 MAC 地址进行扫描：
 
 ```bash
