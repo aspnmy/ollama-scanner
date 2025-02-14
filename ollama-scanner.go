@@ -63,7 +63,7 @@ type ModelInfo struct {
 
 func init() {
 	flag.Usage = func() {
-		helpText := `Ollama节点扫描工具 v2.2
+		helpText := `Ollama节点扫描工具 v2.2 https://t.me/+YfCVhGWyKxoyMDhl
 默认功能:
 - 自动执行性能测试
 - 结果导出到%s
