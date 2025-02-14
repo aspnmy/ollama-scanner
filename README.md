@@ -1,4 +1,4 @@
-# Ollama Scanner 节点扫描工具使用说明-dev_WebUI
+# Ollama Scanner 节点扫描工具使用说明
 
 ![Ollama Scanner](images/README/1739551751297.png)
 
