@@ -1,6 +1,6 @@
 FROM alpine:latest-arm64
 ARG version=v2.2
-ADD ./Releases/${version}/ollama_scanner-linux-arm64 /usr/local/bin/ollama_scanner
+ADD ./Releases/${version}/ollama_scanner_zmap-linux-arm64 /usr/local/bin/ollama_scanner
 RUN chmod +x /usr/local/bin/ollama_scanner
 
 # 设置默认命令
