@@ -2,7 +2,7 @@
 BINARY_NAME_ZMAP := ollama-scanner-zmap
 BINARY_NAME_MASSCAN := ollama-scanner-masscan
 BIN_DIR := Releases
-BIN_VER := v2.2
+BIN_VER ?= v2.2  # 默认值为 v2.2，可通过命令行覆盖
 
 # 定义 Go 命令
 GO := go

@@ -20,7 +20,7 @@ TELEGRAM_CHAT_ID="your_telegram_chat_id" # 替换为你的 Telegram 群组 Chat 
 # 检测并安装 buildah
 check_and_install_buildah() {
     if ! command -v buildah &> /dev/null; then
-        echo "buildah 未安装，正在安装 buildah..."
+        echo "buildah 未安装,正在安装 buildah..."
         if command -v apt-get &> /dev/null; then
             sudo apt-get update && sudo apt-get install -y buildah
         elif command -v yum &> /dev/null; then
@@ -28,25 +28,49 @@ check_and_install_buildah() {
         elif command -v dnf &> /dev/null; then
             sudo dnf install -y buildah
         else
-            echo "无法自动安装 buildah，请手动安装后重试。"
+            echo "无法自动安装 buildah,请手动安装后重试."
             exit 1
         fi
-        echo "buildah 安装完成。"
+        echo "buildah 安装完成."
     else
-        echo "buildah 已安装。"
+        echo "buildah 已安装."
     fi
 }
+
+# 使用 make 构建本体
+build_makefile() {
+    local makefile=$1  
+    local ver=$2
+    # 检查 Makefile 是否存在
+    if [ ! -f "$makefile" ]; then
+        echo "错误:Makefile 不存在于路径 $makefile"
+        exit 1
+    fi
+
+    echo "正在使用 $makefile 构建程序本体..."
+
+    # 在指定路径下执行 make 命令make build-all 
+    make -C "$(dirname "$makefile")" BIN_VER="$ver"
+    if [ $? -eq 0 ]; then
+        echo "成功构建程序本体,标签为 $tag"
+    else
+        echo "构建程序本体失败,标签为 $tag"
+        exit 1
+    fi
+}
+
+
 
 # 使用 buildah 构建 Docker 镜像
 build_buildah_image() {
     local dockerfile=$1
     local tag=$2
-    echo "正在使用 $dockerfile 构建镜像，标签为 $tag..."
+    echo "正在使用 $dockerfile 构建镜像,标签为 $tag..."
     buildah bud -f $dockerfile -t $tag
     if [ $? -eq 0 ]; then
-        echo "成功构建镜像，标签为 $tag"
+        echo "成功构建镜像,标签为 $tag"
     else
-        echo "构建镜像失败，标签为 $tag"
+        echo "构建镜像失败,标签为 $tag"
         exit 1
     fi
 }
@@ -54,14 +78,14 @@ build_buildah_image() {
 # 使用 buildah 推送镜像
 push_buildah_image() {
     local tag=$1
-    echo "正在推送镜像，标签为 $tag..."
+    echo "正在推送镜像,标签为 $tag..."
     buildah push $tag
     if [ $? -eq 0 ]; then
-        echo "成功推送镜像，标签为 $tag"
-        send_telegram_message "✅ 镜像推送成功：$tag"
+        echo "成功推送镜像,标签为 $tag"
+        send_telegram_message "✅ 镜像推送成功:$tag"
     else
-        echo "推送镜像失败，标签为 $tag"
-        send_telegram_message "❌ 镜像推送失败：$tag"
+        echo "推送镜像失败,标签为 $tag"
+        send_telegram_message "❌ 镜像推送失败:$tag"
         exit 1
     fi
 }
@@ -69,15 +93,15 @@ push_buildah_image() {
 # 发送 Telegram 消息
 send_telegram_message() {
     local message=$1
-    echo "正在发送 Telegram 消息：$message"
+    echo "正在发送 Telegram 消息:$message"
     curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
         -d "chat_id=$TELEGRAM_CHAT_ID" \
         -d "text=$message" \
         -d "parse_mode=Markdown"
     if [ $? -eq 0 ]; then
-        echo "Telegram 消息发送成功。"
+        echo "Telegram 消息发送成功."
     else
-        echo "Telegram 消息发送失败。"
+        echo "Telegram 消息发送失败."
     fi
 }
 
