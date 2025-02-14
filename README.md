@@ -1,6 +1,6 @@
 # Ollama Scanner 节点扫描工具使用说明
 
-![Ollama Scanner](ollama_scanner.png)
+![Ollama Scanner](images/README/1739551751297.png)
 
 [English](README_en.md) · [简体中文](README.md)
 
@@ -14,6 +14,7 @@
 ### Windows下使用方案
 
 由于win系统下是无法安装zmap的，所以win下有下面几种使用方式：
+
 - 使用masscan版本的嗅探器(通用性更佳-推荐)
 - 使用wsl模式运行linux版本嗅探器
 - 使用docker容器
@@ -103,9 +104,9 @@
 ## 如何编译程序本体
 
 - 增加编译 arm64平台嗅探器，arm64架构的程序本体可以直接运行或者直接拉取docker镜像
-
 - 编译所有平台的程序：在终端中运行 make 或 make all 命令，将分别为 macOS、Linux 和 Windows 平台生成对应的可执行文件。
 - 单独编译某个平台的程序：
+
   - 编译 macOS 平台：make build-macos
   - 编译 Linux 平台：make build-linux
   - 编译 Windows 平台：make build-windows
