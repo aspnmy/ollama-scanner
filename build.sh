@@ -188,6 +188,50 @@ build_buildah_image() {
     fi
 }
 
+# 使用 buildx 跨架构构建 Docker 镜像
+buildx_buildah_image() {
+    local dockerfile=$1
+    local tag=$2
+    local ver=$3
+    local platform=$4
+
+    # 检查 QEMU 是否已安装,如果未安装则自动安装
+    if ! command -v qemu-aarch64-static &> /dev/null; then
+        echo "QEMU 未安装,正在自动安装 qemu-user-static..."
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-user-static
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y qemu-user-static
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y qemu-user-static
+        elif command -v zypper &> /dev/null; then
+            sudo zypper install -y qemu-user-static
+        else
+            echo "无法自动安装 QEMU,请手动安装 qemu-user-static."
+            exit 1
+        fi
+    fi
+
+    # 使用 buildah 构建镜像
+    buildah build \
+        --platform $platform \
+        --build-arg version=$ver \
+        --file $dockerfile \
+        --tag $tag
+
+    # 检查构建是否成功
+    if [ $? -eq 0 ]; then
+        echo "成功构建镜像,标签为 $tag"
+    else
+        echo "构建镜像失败,标签为 $tag"
+        exit 1
+    fi
+}
+
+
+
+
 # 使用 buildah 推送镜像
 push_buildah_image() {
     local tag=$1
@@ -302,15 +346,19 @@ main() {
     zmap_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap"
     build_buildah_image $builddir_zmap $zmap_tag $buildver
 
-    # 构建 zmap_arm64 镜像
+    # 构建 buildx 跨架构构建zmap_arm64 镜像
+    build_platform="linux/arm64"
     zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$builddir_zmap_arm64"
-    build_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag $buildver
+    buildx_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag $buildver $build_platform
 
     # 推送 masscan 镜像
     push_buildah_image $masscan_tag
 
     # 推送 zmap 镜像
     push_buildah_image $zmap_tag
+
+    # 推送 arm64-zmap 镜像
+    push_buildah_image $zmap_arm64_tag
 }
 
 # 执行主函数
