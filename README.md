@@ -154,4 +154,4 @@ ip addr show | grep link/ether
 
 ## 沟通与交流
 
-- https://t.me/+YfCVhGWyKxoyMDhl
+- https://t.me/Ollama_Scanner
