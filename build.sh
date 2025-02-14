@@ -247,18 +247,35 @@ push_buildah_image() {
     fi
 }
 
-# 发送 Telegram 消息
+
 send_telegram_message() {
     local message=$1
-    echo "正在发送 Telegram 消息:$message"
-    curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-        -d "chat_id=$TELEGRAM_CHAT_ID" \
-        -d "text=$message" \
-        -d "parse_mode=Markdown"
-    if [ $? -eq 0 ]; then
+    # 转义特殊字符
+    message=$(echo "$message" | sed 's/"/\\"/g')
+    # echo "正在发送 Telegram 消息: $message"
+
+    # 发送请求并捕获响应
+    res=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+        -H "Content-Type: application/json" \
+        --data-raw "{\"chat_id\":\"$TELEGRAM_CHAT_ID\",\"message_thread_id\":\"$MESSAGE_THREAD_ID\",\"text\":\"$message\"}")
+
+    # # 打印响应（调试用）
+    # echo "Telegram API 响应: $res"
+
+    # 检查 curl 是否成功
+    if [ $? -ne 0 ]; then
+        echo "Telegram 消息发送失败: curl 请求出错."
+        return 1
+    fi
+
+    # 使用 jq 解析响应并检查 ok 字段
+    if echo "$res" | jq -e '.ok == true' > /dev/null; then
         echo "Telegram 消息发送成功."
+        return 0
     else
-        echo "Telegram 消息发送失败."
+        echo "Telegram 消息发送失败: API 返回错误."
+        echo "错误信息: $(echo "$res" | jq -r '.description')"
+        return 1
     fi
 }
 
