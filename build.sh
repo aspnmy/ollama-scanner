@@ -177,8 +177,9 @@ build_makefile() {
 build_buildah_image() {
     local dockerfile=$1
     local tag=$2
+    local ver=$3
     echo "正在使用 $dockerfile 构建镜像,标签为 $tag..."
-    buildah bud -f $dockerfile -t $tag
+    buildah bud --build-arg  version=$ver -f $dockerfile -t $tag
     if [ $? -eq 0 ]; then
         echo "成功构建镜像,标签为 $tag"
     else
@@ -295,15 +296,15 @@ main() {
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
-    build_buildah_image $builddir_masscan $masscan_tag
+    build_buildah_image $builddir_masscan $masscan_tag $buildver
 
     # 构建 zmap 镜像
     zmap_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap"
-    build_buildah_image $builddir_zmap $zmap_tag
+    build_buildah_image $builddir_zmap $zmap_tag $buildver
 
     # 构建 zmap_arm64 镜像
     zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$builddir_zmap_arm64"
-    build_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag
+    build_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag $buildver
 
     # 推送 masscan 镜像
     push_buildah_image $masscan_tag

@@ -115,11 +115,16 @@
 
 ## 如何编译程序docker镜像
 
-- git本项目，运行bash build.sh
+- git本项目，将env.json.def文件修改成env.json,修改里面的参数
 
-```bash
-bash build.sh
-```
+  ```bash
+  mv env.json.def env.json
+  ```
+- 运行bash build.sh
+
+  ```bash
+  bash build.sh
+  ```
 
 ## 沟通与交流
 
