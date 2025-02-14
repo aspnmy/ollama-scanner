@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# 定义变量
+# 全局变量（默认值）
 builduser="aspnmy" # 镜像仓库用户名
-buildname="ollama-scanner" # 镜像名称
+buildname="ollama_scanner" # 镜像名称
 buildver="v2.2" # 镜像版本
-buildurl="docker.io" # 镜像推送的 URL 位置（默认为 Docker Hub）
+buildurl="docker.io" # 镜像推送的 URL 位置
 
 buildtag_masscan="masscan" # masscan 镜像标签
 buildtag_zmap="zmap" # zmap 镜像标签
@@ -13,9 +13,86 @@ builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
 builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
 builddir_zmap_arm64="dockerfile-zmap-arm64" # zmap Dockerfile 目录
 
-# Telegram Bot 配置
-TELEGRAM_BOT_TOKEN="your_telegram_bot_token" # 替换为你的 Telegram Bot Token
-TELEGRAM_CHAT_ID="your_telegram_chat_id" # 替换为你的 Telegram 群组 Chat ID
+TELEGRAM_BOT_TOKEN="your_telegram_bot_token" # Telegram Bot Token
+TELEGRAM_CHAT_ID="your_telegram_chat_id" # Telegram 群组 Chat ID
+
+release_dir="Releases/$buildver" # 发布目录
+
+# 初始化全局变量
+init() {
+    local env_file="./env.json"
+
+    # 检查 env.json 文件是否存在
+    if [ ! -f "$env_file" ]; then
+        echo "警告: env.json 文件不存在,使用默认值."
+        return
+    fi
+
+    # 使用 jq 读取 env.json 文件并更新全局变量
+    if command -v jq &> /dev/null; then
+        builduser=$(jq -r '.builduser // empty' "$env_file")
+        if [ -n "$builduser" ]; then
+            echo "从 env.json 读取 builduser: $builduser"
+        else
+            builduser="aspnmy"
+        fi
+
+        buildname=$(jq -r '.buildname // empty' "$env_file")
+        if [ -n "$buildname" ]; then
+            echo "从 env.json 读取 buildname: $buildname"
+        else
+            buildname="ollama-scanner"
+        fi
+
+        buildver=$(jq -r '.buildver // empty' "$env_file")
+        if [ -n "$buildver" ]; then
+            echo "从 env.json 读取 buildver: $buildver"
+        else
+            buildver="v2.2"
+        fi
+
+        buildurl=$(jq -r '.buildurl // empty' "$env_file")
+        if [ -n "$buildurl" ]; then
+            echo "从 env.json 读取 buildurl: $buildurl"
+        else
+            buildurl="docker.io"
+        fi
+
+        TELEGRAM_BOT_TOKEN=$(jq -r '.TELEGRAM_BOT_TOKEN // empty' "$env_file")
+        if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "从 env.json 读取 TELEGRAM_BOT_TOKEN: $TELEGRAM_BOT_TOKEN"
+        else
+            TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
+        fi
+
+        TELEGRAM_CHAT_ID=$(jq -r '.TELEGRAM_CHAT_ID // empty' "$env_file")
+        if [ -n "$TELEGRAM_CHAT_ID" ]; then
+            echo "从 env.json 读取 TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID"
+        else
+            TELEGRAM_CHAT_ID="your_telegram_chat_id"
+        fi
+
+        release_dir=$(jq -r '.release_dir // empty' "$env_file")
+        if [ -n "$release_dir" ]; then
+            echo "从 env.json 读取 release_dir: $release_dir"
+        else
+            release_dir="Releases/$buildver"
+        fi
+    else
+        echo "错误: jq 未安装,无法解析 env.json 文件."
+        exit 1
+    fi
+
+    # 打印初始化后的全局变量
+    echo "初始化全局变量:"
+    echo "builduser=$builduser"
+    echo "buildname=$buildname"
+    echo "buildver=$buildver"
+    echo "buildurl=$buildurl"
+    echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
+    echo "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
+    echo "release_dir=$release_dir"
+}
 
 # 检测并安装 buildah
 check_and_install_buildah() {
@@ -28,12 +105,52 @@ check_and_install_buildah() {
         elif command -v dnf &> /dev/null; then
             sudo dnf install -y buildah
         else
-            echo "无法自动安装 buildah,请手动安装后重试."
-            exit 1
+        echo "无法自动安装 buildah,请手动安装后重试."
+        exit 1
         fi
         echo "buildah 安装完成."
     else
         echo "buildah 已安装."
+    fi
+}
+
+# 检测并安装 make
+check_and_install_make() {
+    if ! command -v make &> /dev/null; then
+        echo "make 未安装,正在安装 make..."
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y make
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y make
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y make
+        else
+            echo "无法自动安装 make,请手动安装后重试."
+            exit 1
+        fi
+        echo "make 安装完成."
+    else
+        echo "make 已安装."
+    fi
+}
+
+# 检测并安装 GitHub CLI (gh)
+check_and_install_gh() {
+    if ! command -v gh &> /dev/null; then
+        echo "GitHub CLI (gh) 未安装,正在安装 gh..."
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y gh
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y gh
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y gh
+        else
+            echo "无法自动安装 GitHub CLI (gh),请手动安装后重试."
+            exit 1
+        fi
+        echo "GitHub CLI (gh) 安装完成."
+    else
+        echo "GitHub CLI (gh) 已安装."
     fi
 }
 
@@ -49,17 +166,15 @@ build_makefile() {
 
     echo "正在使用 $makefile 构建程序本体..."
 
-    # 在指定路径下执行 make 命令make build-all 
+    # 在指定路径下执行 make 命令
     make -C "$(dirname "$makefile")" BIN_VER="$ver"
     if [ $? -eq 0 ]; then
-        echo "成功构建程序本体,标签为 $tag"
+        echo "成功构建程序本体,标签为 $ver"
     else
-        echo "构建程序本体失败,标签为 $tag"
+        echo "构建程序本体失败,标签为 $ver"
         exit 1
     fi
 }
-
-
 
 # 使用 buildah 构建 Docker 镜像
 build_buildah_image() {
@@ -105,10 +220,48 @@ send_telegram_message() {
     fi
 }
 
+# 发布到 GitHub Releases
+publish_to_github_releases() {
+    local version=$1
+    local release_dir=$2
+
+    # 检查发布目录是否存在
+    if [ ! -d "$release_dir" ]; then
+        echo "错误:发布目录 $release_dir 不存在"
+        exit 1
+    fi
+
+    echo "正在发布到 GitHub Releases,版本为 $version..."
+
+    # 创建 GitHub Release
+    gh release create "$version" "$release_dir"/* --title "Release $version" --notes "Automated release for version $version"
+    if [ $? -eq 0 ]; then
+        echo "成功发布到 GitHub Releases,版本为 $version"
+        send_telegram_message "✅ GitHub Releases 发布成功:版本 $version"
+    else
+        echo "发布到 GitHub Releases 失败,版本为 $version"
+        send_telegram_message "❌ GitHub Releases 发布失败:版本 $version"
+        exit 1
+    fi
+}
+
 # 主函数
 main() {
+    # 初始化全局变量
+    init
+
+    # 检测并安装 make
+    check_and_install_make
     # 检测并安装 buildah
     check_and_install_buildah
+    # 检测并安装 GitHub CLI (gh)
+    check_and_install_gh
+
+    # 使用 make 构建本体
+    build_makefile "./Makefile" "$buildver"
+
+    # 发布到 GitHub Releases
+    publish_to_github_releases "$buildver" "$release_dir"
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
