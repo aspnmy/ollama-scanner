@@ -9,15 +9,15 @@ all: build-macos build-linux build-windows
 
 # 编译 macOS 平台的程序
 build-macos:
-	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-darwin-amd64 c:/Users/nasAdmin/Downloads/ollama-scanner.go
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-darwin-amd64 ./ollama-scanner.go
 
 # 编译 Linux 平台的程序
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-linux-amd64 c:/Users/nasAdmin/Downloads/ollama-scanner.go
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-linux-amd64 ./ollama-scanner.go
 
 # 编译 Windows 平台的程序
 build-windows:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe c:/Users/nasAdmin/Downloads/ollama-scanner.go
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe ./ollama-scanner.go
 
 # 清理生成的文件
 clean:

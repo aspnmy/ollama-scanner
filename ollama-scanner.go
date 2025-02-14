@@ -35,8 +35,8 @@ const (
 )
 
 var (
-	gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址（格式:aa:bb:cc:dd:ee:ff）")
-	inputFile   = flag.String("input", "ip.txt", "输入文件路径（CIDR格式列表）")
+	gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
+	inputFile   = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
 	outputFile  = flag.String("output", defaultCSVFile, "CSV输出文件路径")
 	disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
 	benchPrompt = flag.String("prompt", "为什么太阳会发光？用一句话回答", "性能测试提示词")
@@ -136,7 +136,7 @@ func main() {
 
 
 // checkAndInstallZmap 检查系统中是否安装了 zmap,如果未安装则尝试自动安装.
-// 支持的操作系统包括 Linux（Debian/Ubuntu 使用 apt,CentOS/RHEL 使用 yum）和 macOS（使用 brew）.
+// 支持的操作系统包括 Linux(Debian/Ubuntu 使用 apt,CentOS/RHEL 使用 yum)和 macOS(使用 brew).
 // 如果不支持当前操作系统或安装过程中出现错误,将返回相应的错误信息.
 func checkAndInstallZmap() error {
 	// 检查 zmap 是否已经安装
@@ -164,7 +164,7 @@ func checkAndInstallZmap() error {
 	// 根据不同的操作系统选择不同的安装方式
 	switch osName {
 	case "linux":
-		// 在 Linux 系统上,尝试使用 apt（Debian/Ubuntu）或 yum（CentOS/RHEL）安装 zmap
+		// 在 Linux 系统上,尝试使用 apt(Debian/Ubuntu)或 yum(CentOS/RHEL)安装 zmap
 		// 首先尝试使用 apt
 		err = exec.Command("apt", "-v").Run()
 		if err == nil {
