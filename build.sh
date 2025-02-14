@@ -41,7 +41,7 @@ init() {
         if [ -n "$buildname" ]; then
             echo "从 env.json 读取 buildname: $buildname"
         else
-            buildname="ollama-scanner"
+            buildname="ollama_scanner"
         fi
 
         buildver=$(jq -r '.buildver // empty' "$env_file")

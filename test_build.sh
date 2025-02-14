@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test build script for ollama-scanner
+# Test build script for ollama_scanner
 
 # Check if required dependencies are installed
 check_dependencies() {

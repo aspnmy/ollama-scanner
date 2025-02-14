@@ -1,6 +1,6 @@
 # Ollama Scanner 节点扫描工具使用说明
 
-![Ollama Scanner](Ollama-scanner.png)
+![Ollama Scanner](ollama_scanner.png)
 
 [English](README_en.md) · [简体中文](README.md)
 
@@ -20,9 +20,9 @@
 
   ```docker
   # 下载镜像
-  docker pull docker.io/aspnmy/ollama-scanner:v2.2-zmap
+  docker pull docker.io/aspnmy/ollama_scanner:v2.2-zmap
   # 运行嗅探器
-  docker exec -it [dockerid]   /usr/local/bin/ollama-scanner  [参数]
+  docker exec -it [dockerid]   /usr/local/bin/ollama_scanner  [参数]
   ```
 
 ### 基本用法
@@ -30,7 +30,7 @@
 - 在命令行中运行该工具时，可使用如下基本命令格式：
 
 ```bash
-./ollama-scanner [参数]
+./ollama_scanner [参数]
 ```
 
 ### 参数说明
@@ -50,31 +50,31 @@
 - 指定Ip地址，禁用性能测试，并指定输出文件，并指定 zmap 线程数：
 
 ```bash
-./ollama-scanner -input ip.txt  -no-bench -output custom.csv -T 20
+./ollama_scanner -input ip.txt  -no-bench -output custom.csv -T 20
 ```
 
 - 指定 IP 地址列表进行扫描：
 
 ```bash
-./ollama-scanner -input ip.txt
+./ollama_scanner -input ip.txt
 ```
 
 - 指定网关 MAC 地址进行扫描：
 
 ```bash
-./ollama-scanner -gateway-mac aa:bb:cc:dd:ee:ff
+./ollama_scanner -gateway-mac aa:bb:cc:dd:ee:ff
 ```
 
 - 指定网关 MAC 地址，禁用性能测试，并指定输出文件：
 
 ```bash
-./ollama-scanner -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
+./ollama_scanner -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
 ```
 
 - 指定网关 MAC 地址和 zmap 线程数：
 
 ```bash
-./ollama-scanner -gateway-mac aa:bb:cc:dd:ee:ff -T 20
+./ollama_scanner -gateway-mac aa:bb:cc:dd:ee:ff -T 20
 ```
 
 ### 工具执行流程
