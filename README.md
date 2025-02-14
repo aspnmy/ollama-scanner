@@ -1,4 +1,4 @@
-# Ollama Scanner 节点扫描工具使用说明
+# Ollama Scanner 节点扫描工具使用说明-dev_WebUI
 
 ![Ollama Scanner](images/README/1739551751297.png)
 
@@ -17,6 +17,21 @@
 - 也可以用于嗅探公网IP中是否具有Ollama服务
 
 ## 使用方法
+
+### 如何获取网关mac地址
+
+- 如何获取网关mac地址:
+
+```bash
+ip addr show | grep link/ether
+```
+
+- 或者输入ip addr show,查看你的访问外网的那个网卡的mac地址
+
+### 支持WebUI访问模式
+
+- 将扫描结果导出到数据库liteSQL
+- 支持以WebUI的形式查询扫描结果
 
 ### Windows下使用方案
 
