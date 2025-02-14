@@ -4,6 +4,13 @@
 
 [English](README_en.md) · [简体中文](README.md)
 
+## 分支说明
+
+- webUI_mongodb 主要把导出数据以json形式保存在mongodb数据库中
+- 支持webUI进行读取mongodb数据库的文件
+- webUI以vue进行开发,支持结果实时渲染
+- nodejs版本管理器推荐用fnm进行管理
+
 ## 工具概述
 
 - 一个用于局域网扫描 Ollama Scanner 节点的工具，具备自动执行性能测试并将结果导出到 CSV 文件的功能。它借助 zmap 工具来扫描 IP 地址，同时对每个 IP 地址上的 Ollama 服务进行检查，获取模型信息并开展性能测试。
