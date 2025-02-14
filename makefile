@@ -6,6 +6,8 @@ BIN_VER ?= v2.2  # 默认值为 v2.2，可通过命令行覆盖
 
 # 定义 Go 命令
 GO := go
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
 
 # 定义支持的平台和架构
 PLATFORMS := darwin linux windows
@@ -39,12 +41,14 @@ define build
 		echo "Success: $(BINARY_NAME_ZMAP)-$(1)-$(2)"; \
 	else \
 		echo "Failed: $(BINARY_NAME_ZMAP)-$(1)-$(2)"; \
+		echo "Ensure that the Go module is initialized and the source files exist."; \
 		exit 1; \
 	fi
 	@if $(GO) build -o $(BIN_DIR)/$(BIN_VER)/$(BINARY_NAME_MASSCAN)-$(1)-$(2) ./Src/ollama_scanner_masscan.go; then \
 		echo "Success: $(BINARY_NAME_MASSCAN)-$(1)-$(2)"; \
 	else \
 		echo "Failed: $(BINARY_NAME_MASSCAN)-$(1)-$(2)"; \
+		echo "Ensure that the Go module is initialized and the source files exist."; \
 		exit 1; \
 	fi
 endef
