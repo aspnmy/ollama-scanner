@@ -2,7 +2,7 @@
 
 # 全局变量（默认值）
 builduser="aspnmy" # 镜像仓库用户名
-buildname="ollama_scanner" # 镜像名称
+buildname="ollama-scanner" # 镜像名称
 buildver="v2.2" # 镜像版本
 buildurl="docker.io" # 镜像推送的 URL 位置
 
@@ -41,7 +41,7 @@ init() {
         if [ -n "$buildname" ]; then
             echo "从 env.json 读取 buildname: $buildname"
         else
-            buildname="ollama_scanner"
+            buildname="ollama-scanner"
         fi
 
         buildver=$(jq -r '.buildver // empty' "$env_file")
@@ -105,8 +105,8 @@ check_and_install_buildah() {
         elif command -v dnf &> /dev/null; then
             sudo dnf install -y buildah
         else
-        echo "无法自动安装 buildah,请手动安装后重试."
-        exit 1
+            echo "无法自动安装 buildah,请手动安装后重试."
+            exit 1
         fi
         echo "buildah 安装完成."
     else
@@ -168,7 +168,6 @@ build_makefile() {
 
     # 在指定路径下执行 make 命令
     make -C "$(dirname "$makefile")" BIN_VER="$ver"
-    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功构建程序本体,标签为 $ver"
     else
@@ -182,9 +181,7 @@ build_buildah_image() {
     local dockerfile=$1
     local tag=$2
     echo "正在使用 $dockerfile 构建镜像,标签为 $tag..."
-    # shellcheck disable=SC2086
     buildah bud -f $dockerfile -t $tag
-    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功构建镜像,标签为 $tag"
     else
@@ -197,9 +194,7 @@ build_buildah_image() {
 push_buildah_image() {
     local tag=$1
     echo "正在推送镜像,标签为 $tag..."
-    # shellcheck disable=SC2086
     buildah push $tag
-    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "成功推送镜像,标签为 $tag"
         send_telegram_message "✅ 镜像推送成功:$tag"
@@ -218,12 +213,44 @@ send_telegram_message() {
         -d "chat_id=$TELEGRAM_CHAT_ID" \
         -d "text=$message" \
         -d "parse_mode=Markdown"
-    # shellcheck disable=SC2181
     if [ $? -eq 0 ]; then
         echo "Telegram 消息发送成功."
     else
         echo "Telegram 消息发送失败."
     fi
+}
+
+# 动态生成 Release Notes
+generate_release_notes() {
+    local version=$1
+    local notes=""
+
+    # 添加标题
+    notes+="# Release $version\n\n"
+
+    # 添加构建信息
+    notes+="## 构建信息\n"
+    notes+="- 构建用户: $builduser\n"
+    notes+="- 镜像名称: $buildname\n"
+    notes+="- 镜像版本: $buildver\n"
+    notes+="- 镜像仓库: $buildurl\n\n"
+
+    # 添加 Git 提交历史
+    if command -v git &> /dev/null; then
+        notes+="## 提交历史\n"
+        notes+="\`\`\`\n"
+        notes+="$(git log --oneline -n 5)\n"
+        notes+="\`\`\`\n\n"
+    else
+        notes+="## 提交历史\n"
+        notes+="Git 未安装,无法获取提交历史.\n\n"
+    fi
+
+    # 添加构建日志
+    notes+="## 构建日志\n"
+    notes+="构建成功完成,所有镜像已推送至仓库.\n"
+
+    echo -e "$notes"
 }
 
 # 发布到 GitHub Releases
@@ -239,9 +266,12 @@ publish_to_github_releases() {
 
     echo "正在发布到 GitHub Releases,版本为 $version..."
 
+    # 生成 Release Notes
+    local release_notes
+    release_notes=$(generate_release_notes "$version")
+
     # 创建 GitHub Release
-    gh release create "$version" "$release_dir"/* --title "Release $version" --notes "Automated release for version $version"
-    # shellcheck disable=SC2181
+    gh release create "$version" "$release_dir"/* --title "Release $version" --notes "$release_notes"
     if [ $? -eq 0 ]; then
         echo "成功发布到 GitHub Releases,版本为 $version"
         send_telegram_message "✅ GitHub Releases 发布成功:版本 $version"
@@ -265,32 +295,27 @@ main() {
     check_and_install_gh
 
     # 使用 make 构建本体
-    build_makefile "Makefile" "$buildver"
+    build_makefile "./Makefile" "$buildver"
 
     # 发布到 GitHub Releases
     publish_to_github_releases "$buildver" "$release_dir"
 
     # 构建 masscan 镜像
     masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
-    # shellcheck disable=SC2086
     build_buildah_image $builddir_masscan $masscan_tag
 
     # 构建 zmap 镜像
     zmap_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap"
-    # shellcheck disable=SC2086
     build_buildah_image $builddir_zmap $zmap_tag
 
     # 构建 zmap_arm64 镜像
     zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$builddir_zmap_arm64"
-    # shellcheck disable=SC2086
     build_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag
 
-    # shellcheck disable=SC2086
     # 推送 masscan 镜像
     push_buildah_image $masscan_tag
 
     # 推送 zmap 镜像
-    # shellcheck disable=SC2086
     push_buildah_image $zmap_tag
 }
 
