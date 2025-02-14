@@ -156,18 +156,15 @@ check_and_install_gh() {
 
 # 使用 make 构建本体
 build_makefile() {
-    local makefile=$1  
-    local ver=$2
+     
+    local ver=$1
     # 检查 Makefile 是否存在
-    if [ ! -f "$makefile" ]; then
-        echo "错误:Makefile 不存在于路径 $makefile"
-        exit 1
-    fi
 
-    echo "正在使用 $makefile 构建程序本体..."
+
+    echo "正在使用 makefile 构建程序本体..."
 
     # 在指定路径下执行 make 命令
-    make -C "$(dirname "$makefile")" BIN_VER="$ver"
+    make  BIN_VER="$ver"
     if [ $? -eq 0 ]; then
         echo "成功构建程序本体,标签为 $ver"
     else
@@ -295,7 +292,7 @@ main() {
     check_and_install_gh
 
     # 使用 make 构建本体
-    build_makefile "./Makefile" "$buildver"
+    build_makefile  "$buildver"
 
     # 发布到 GitHub Releases
     publish_to_github_releases "$buildver" "$release_dir"
