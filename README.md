@@ -1,15 +1,31 @@
 # Ollama Scanner 节点扫描工具使
-![Ollama Scanner](<docs/Ollama 节点扫描工具说明.png>)
 
-[English](docs/README_en.md) · [简体中文](docs/README_zh.md) 
+![Ollama Scanner](docs/Ollama 节点扫描工具说明.png)
+
+[English](docs/README_en.md) · [简体中文](docs/README_zh.md)
 
 ## 工具概述
 
 - 一个用于局域网扫描 Ollama Scanner 节点的工具，具备自动执行性能测试并将结果导出到 CSV 文件的功能。它借助 zmap 工具来扫描 IP 地址，同时对每个 IP 地址上的 Ollama 服务进行检查，获取模型信息并开展性能测试。
-
 - 也可以用于嗅探公网IP中是否具有Ollama服务
 
 ## 使用方法
+
+### Windows下使用方案
+
+由于win系统下是无法安装zmap的，所以win下有下面几种使用方式：
+
+* 使用masscan版本的嗅探器(通用性更加)
+* 使用wsl模式运行linux版本嗅探器
+* 使用docker容器
+
+  ```docker
+  # 下载镜像
+  docker pull docker.io/aspnmy/ollama-scanner:v2.2-zmap
+  # 运行嗅探器
+  /usr/local/bin/ollama-scanner [参数]
+  ```
+
 
 ### 基本用法
 
@@ -21,14 +37,15 @@
 
 ### 参数说明
 
-| 参数 | 描述 | 默认值 |
-| --- | --- | --- |
-| -gateway-mac | 指定网关 MAC 地址，格式为 aa:bb:cc:dd:ee:ff | 无（必须指定） |
-| -input | 输入文件路径，文件内容为 CIDR 格式的 IP 地址列表 | ip.txt |
-| -output | CSV 输出文件路径 | results.csv |
-| -no-bench | 禁用性能基准测试 | false |
-| -prompt | 性能测试提示词 | 为什么太阳会发光？用一句话回答 |
-| -T | zmap 线程数 | 10 |
+
+| 参数         | 描述                                             | 默认值                         |
+| ------------ | ------------------------------------------------ | ------------------------------ |
+| -gateway-mac | 指定网关 MAC 地址，格式为 aa:bb:cc:dd:ee:ff      | 无（必须指定）                 |
+| -input       | 输入文件路径，文件内容为 CIDR 格式的 IP 地址列表 | ip.txt                         |
+| -output      | CSV 输出文件路径                                 | results.csv                    |
+| -no-bench    | 禁用性能基准测试                                 | false                          |
+| -prompt      | 性能测试提示词                                   | 为什么太阳会发光？用一句话回答 |
+| -T           | zmap 线程数                                      | 10                             |
 
 ### 使用示例
 
@@ -98,4 +115,3 @@
 ## 沟通与交流
 
 - https://t.me/+YfCVhGWyKxoyMDhl
-

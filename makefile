@@ -1,5 +1,5 @@
 # 定义可执行文件的名称
-BINARY_NAME := ollama-scanner
+BINARY_NAME := ollama-scanner-zmap
 
 # 定义 Go 命令
 GO := go
@@ -9,15 +9,15 @@ all: build-macos build-linux build-windows
 
 # 编译 macOS 平台的程序
 build-macos:
-	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-darwin-amd64 ./ollama-scanner.go
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-darwin-amd64 ./ollama-scanner-zmap.go
 
 # 编译 Linux 平台的程序
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-linux-amd64 ./ollama-scanner.go
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-linux-amd64 ./ollama-scanner-zmap.go
 
 # 编译 Windows 平台的程序
 build-windows:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe ./ollama-scanner-win.go
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe ./ollama-scanner-zmap-win.go
 
 # 清理生成的文件
 clean:
