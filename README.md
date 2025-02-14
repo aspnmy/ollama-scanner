@@ -1,8 +1,8 @@
 # Ollama Scanner 节点扫描工具使用说明
 
-![Ollama Scanner](docs/Ollama-scanner.png)
+![Ollama Scanner](Ollama-scanner.png)
 
-[English](docs/README_en.md) · [简体中文](docs/README_zh.md)
+[English](README_en.md) · [简体中文](README.md)
 
 ## 工具概述
 

@@ -9,16 +9,16 @@ all: build-macos build-linux build-windows
 
 # 编译 macOS 平台的程序
 build-macos:
-	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME_ZMAP )-darwin-amd64 ./ollama-scanner-zmap.go
-	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME_MASSCAN)-darwin-amd64 ./ollama-scanner-masscan.go
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME_ZMAP )-darwin-amd64 ./Src/ollama-scanner-zmap.go
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BINARY_NAME_MASSCAN)-darwin-amd64 ./Src/ollama-scanner-masscan.go
 # 编译 Linux 平台的程序
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME_ZMAP)-linux-amd64 ./ollama-scanner-zmap.go
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME_MASSCAN)-linux-amd64 ./ollama-scanner-masscan.go
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME_ZMAP)-linux-amd64 ./Src/ollama-scanner-zmap.go
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BINARY_NAME_MASSCAN)-linux-amd64 ./Src/ollama-scanner-masscan.go
 
 # 编译 Windows 平台的程序
 build-windows:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME_MASSCAN)-windows-amd64.exe ./ollama-scanner-masscan.go
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME_MASSCAN)-windows-amd64.exe ./Src/ollama-scanner-masscan.go
 
 # 清理生成的文件
 clean:
