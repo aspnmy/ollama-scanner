@@ -1,22 +1,23 @@
-# Ollama 节点扫描工具使用说明
-![Uploading Ollama 节点扫描工具说明.png…]()
+# Ollama Scanner节点扫描工具使用说明
+![./docs/Ollama 节点扫描工具说明.png](Ollama Scanner节点扫描工具)
 
 <p align="center">
-  <a href="/README-en.md">English</a>
-  ·
-  <a href="/README.md">简体中文</a>
+<a href="/README-en.md">English</a>
+·
+<a href="/README.md">简体中文</a>
 </p>
 
 ## 工具概述
-- 一个用于局域网扫描 Ollama 节点的工具,具备自动执行性能测试并将结果导出到 CSV 文件的功能.它借助 zmap 工具来扫描 IP 地址,同时对每个 IP 地址上的 Ollama 服务进行检查,获取模型信息并开展性能测试.
+- 一个用于局域网扫描 Ollama Scanner节点的工具,具备自动执行性能测试并将结果导出到 CSV 文件的功能.它借助 zmap 工具来扫描 IP 地址,同时对每个 IP 地址上的 Ollama 服务进行检查,获取模型信息并开展性能测试.
 
 ## 使用方法
 
-###  基本用法
+### 基本用法
+
 - 在命令行中运行该工具时,可使用如下基本命令格式:
-  
+
 ```bash
-  ./ollama-scanner [参数]
+./ollama-scanner [参数]
 
 ```
 ### 参数说明
@@ -30,6 +31,7 @@
 | -T | zmap 线程数 | 10 |
 
 ### 使用示例
+
 - 指定网关 MAC 地址进行扫描:
 
 ```bash
@@ -38,7 +40,7 @@
 ```
 
 - 指定网关 MAC 地址,禁用性能测试,并指定输出文件:
-  
+
 ```bash
 ./ollama-scanner -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
 
@@ -54,20 +56,24 @@
 ### 工具执行流程
 
 #### 初始化:解析命令行参数,创建可取消的上下文,检查并安装 zmap（若未安装）,初始化 CSV 写入器,设置信号处理.
+
 #### 扫描过程:
-   验证输入参数的有效性.
+ 验证输入参数的有效性.
 - 执行 zmap 扫描,获取存活的 IP 地址.
 - 对每个存活的 IP 地址进行端口检查和 Ollama 服务检查.
 - 获取每个 IP 地址上的模型信息.
 - 若未禁用性能测试,则对每个模型进行性能测试.
+
 #### 结果处理:
 - 将扫描结果打印到控制台.
 - 将扫描结果写入 CSV 文件.
+
 ### 注意事项
 - zmap 安装:工具会尝试自动安装 zmap,不过在某些操作系统上可能需要手动安装.若自动安装失败,工具会提示你手动安装并提供安装链接.
 - 输入文件:输入文件需包含 CIDR 格式的 IP 地址列表,若文件不存在,工具会报错.
 - 性能测试:性能测试可能会消耗较多时间和资源,你可以使用 -no-bench 参数禁用该功能.
 - 
+
 ## 如何编译
 - 编译所有平台的程序:在终端中运行 make 或 make all 命令,将分别为 macOS、Linux 和 Windows 平台生成对应的可执行文件.
 - 单独编译某个平台的程序: ◦ 编译 macOS 平台:make build-macos
@@ -78,5 +84,4 @@
 
 ## 沟通与交流
 - https://t.me/+YfCVhGWyKxoyMDhl
-
 
