@@ -32,6 +32,12 @@
 
 ### 使用示例
 
+- 指定Ip地址，禁用性能测试，并指定输出文件，并指定 zmap 线程数：
+
+```bash
+./ollama-scanner -input ip.txt  -no-bench -output custom.csv -T 20
+```
+
 - 指定 IP 地址列表进行扫描：
 
 ```bash
