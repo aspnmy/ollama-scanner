@@ -179,7 +179,9 @@ build_buildah_image() {
     local tag=$2
     local ver=$3
     echo "正在使用 $dockerfile 构建镜像,标签为 $tag..."
-    buildah bud --build-arg  version=$ver -f $dockerfile -t $tag
+    # 无缓存构建方式 保证镜像的一致性
+    buildah bud --no-cache --build-arg version=$ver -f $dockerfile -t $tag
+
     if [ $? -eq 0 ]; then
         echo "成功构建镜像,标签为 $tag"
     else
@@ -213,12 +215,15 @@ buildx_buildah_image() {
         fi
     fi
 
-    # 使用 buildah 构建镜像
+    # 使用 buildah 构建跨架构镜像
+    # 使用 --no-cache 参数禁用缓存,保证镜像的一致性
     buildah build \
         --platform $platform \
         --build-arg version=$ver \
         --file $dockerfile \
-        --tag $tag
+        --tag $tag \
+        --no-cache
+
 
     # 检查构建是否成功
     if [ $? -eq 0 ]; then
