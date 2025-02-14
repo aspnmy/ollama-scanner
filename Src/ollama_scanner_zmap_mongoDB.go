@@ -360,12 +360,7 @@ func processResults(ctx context.Context) error {
 	return nil
 }
 
-func resultHandler() {
-	for res := range resultsChan {
-		printResult(res)
-		writeCSV(res)
-	}
-}
+
 
 func printResult(res ScanResult) {
 	fmt.Printf("\nIP地址: %s\n", res.IP)

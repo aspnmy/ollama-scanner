@@ -158,15 +158,20 @@ check_and_install_gh() {
 build_makefile() {
      
     local ver=$1
+    local make_res=$2
     # 检查 Makefile 是否存在
-
+    local timeNowLocal=$(TZ='Asia/Shanghai' date "+%Y-%m-%d %H:%M:%S")
+    #echo "${timeNowLocal}"
+    
 
     echo "正在使用 makefile 构建程序本体..."
 
     # 在指定路径下执行 make 命令
     make  BIN_VER="$ver"
     if [ $? -eq 0 ]; then
-        echo "成功构建程序本体,标签为 $ver"
+       echo "成功构建程序本体,标签为 $ver"
+
+       send_telegram_message "✅ $timeNowLocal 构建新版本成功:$ver,新增功能:$make_res"
     else
         echo "构建程序本体失败,标签为 $ver"
         exit 1
@@ -355,7 +360,8 @@ main() {
     check_and_install_gh
 
     # 使用 make 构建本体
-    build_makefile  "$buildver"
+    make_res="$buildver 支持导出扫描结果到mongoDB数据库"
+    build_makefile  "$buildver" "$make_res"
 
     # 发布到 GitHub Releases
     # publish_to_github_releases "$buildver" "$release_dir/$buildver"
