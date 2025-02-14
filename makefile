@@ -17,7 +17,7 @@ build-linux:
 
 # 编译 Windows 平台的程序
 build-windows:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe ./ollama-scanner.go
+	GOOS=windows GOARCH=amd64 $(GO) build -o $(BINARY_NAME)-windows-amd64.exe ./ollama-scanner-win.go
 
 # 清理生成的文件
 clean:
