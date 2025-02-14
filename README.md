@@ -22,7 +22,7 @@
   # 下载镜像
   docker pull docker.io/aspnmy/ollama-scanner:v2.2-zmap
   # 运行嗅探器
-  /usr/local/bin/ollama-scanner [参数]
+  docker exec -it [dockerid]   /usr/local/bin/ollama-scanner  [参数]
   ```
 
 ### 基本用法
