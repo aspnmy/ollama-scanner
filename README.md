@@ -11,6 +11,16 @@
 
 ## 使用方法
 
+### 如何获取网关mac地址
+
+- 如何获取网关mac地址:
+
+```bash
+ip addr show | grep link/ether
+```
+
+- 或者输入ip addr show,查看你的访问外网的那个网卡的mac地址
+
 ### 支持WebUI访问模式
 
 - 将扫描结果导出到数据库liteSQL
