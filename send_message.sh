@@ -38,7 +38,12 @@ init() {
         else
             buildurl="docker.io"
         fi
-
+        TELEGRAM_URI=$(jq -r '.TELEGRAM_URI // empty' "$env_file")
+        if [ -n "$TELEGRAM_URI" ]; then
+            echo "从 env.json 读取 TELEGRAM_URI: $TELEGRAM_URI"
+        else
+            TELEGRAM_URI="ELEGRAM_URI"
+        fi
         TELEGRAM_BOT_TOKEN=$(jq -r '.TELEGRAM_BOT_TOKEN // empty' "$env_file")
         if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
             echo "从 env.json 读取 TELEGRAM_BOT_TOKEN: $TELEGRAM_BOT_TOKEN"
@@ -79,8 +84,8 @@ send_telegram_message() {
     local message=$1
     # 转义特殊字符
     message=$(echo "$message" | sed 's/"/\\"/g')
-    echo "正在发送 Telegram 消息: $message"
-    res=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+    echo "TELEGRAM_URI: $TELEGRAM_URI"
+    res=$(curl -s -X POST "$TELEGRAM_URI/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
         -H "Content-Type: application/json" \
         --data-raw "{\"chat_id\":\"$TELEGRAM_CHAT_ID\",\"text\":\"$message\"}")
     echo $res

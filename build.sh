@@ -75,6 +75,13 @@ init() {
         else
             buildurl="docker.io"
         fi
+        
+        TELEGRAM_URI=$(jq -r '.TELEGRAM_URI // empty' "$env_file")
+        if [ -n "$TELEGRAM_URI" ]; then
+            echo "从 env.json 读取 TELEGRAM_URI: $TELEGRAM_URI"
+        else
+            TELEGRAM_URI="ELEGRAM_URI"
+        fi
 
         TELEGRAM_BOT_TOKEN=$(jq -r '.TELEGRAM_BOT_TOKEN // empty' "$env_file")
         if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
@@ -102,14 +109,14 @@ init() {
     fi
 
     # 打印初始化后的全局变量
-    echo "初始化全局变量:"
-    echo "builduser=$builduser"
-    echo "buildname=$buildname"
-    echo "buildver=$buildver"
-    echo "buildurl=$buildurl"
-    echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
-    echo "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
-    echo "release_dir=$release_dir"
+    # echo "初始化全局变量:"
+    # echo "builduser=$builduser"
+    # echo "buildname=$buildname"
+    # echo "buildver=$buildver"
+    # echo "buildurl=$buildurl"
+    # echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
+    # echo "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
+    # echo "release_dir=$release_dir"
 }
 
 # 检测并安装 buildah
@@ -283,7 +290,7 @@ send_telegram_message() {
     # echo "正在发送 Telegram 消息: $message"
 
     # 发送请求并捕获响应
-    res=$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+    res=$(curl -s -X POST "$TELEGRAM_URI/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
         -H "Content-Type: application/json" \
         --data-raw "{\"chat_id\":\"$TELEGRAM_CHAT_ID\",\"message_thread_id\":\"$MESSAGE_THREAD_ID\",\"text\":\"$message\"}")
 
