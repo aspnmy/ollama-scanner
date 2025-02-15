@@ -1,3 +1,18 @@
+// v2.2.1 增加断点续扫功能 支持进度条显示
+// 自动获取 eth0 网卡的 MAC 地址
+// 在以下情况下尝试自动获取 MAC 地址：
+// 配置文件不存在时
+// 配置文件中的 MAC 地址为空时
+// 命令行参数未指定 MAC 地址时
+// 获取失败时给出相应的错误提示
+// 保存配置文件时更新 MAC 地址
+// 保存配置文件时更新 zmap 线程数
+// 保存配置文件时更新输入文件路径
+// 保存配置文件时更新输出文件路径
+// 保存配置文件时更新端口号
+// 保存配置文件时更新禁用性能基准测试选项
+// 增加mongoDB驱动,并实现插入数据功能
+
 package main
 
 import (
@@ -21,11 +36,19 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
+	"net"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/mongo/options"
+    "go.mongodb.org/mongo-driver/bson"
 )
+// 在 const 声明之前添加配置结构体
+type Config struct {
+    Port       int    `json:"port"`
+    GatewayMAC string `json:"gateway_mac"`
+    InputFile  string `json:"input_file"`
+    OutputFile string `json:"output_file"`
+    ZmapThreads int   `json:"zmap_threads"`
+}
 
 const (
 	port            = 11434
@@ -51,102 +74,327 @@ var (
 	resultsChan chan ScanResult
 	allResults  []ScanResult
 	mu          sync.Mutex
+	//mongoDB变量
 	mongoClient *mongo.Client
+    mongoURI    = flag.String("mongo-uri", "mongodb://localhost:27017", "MongoDB 连接URI")
+    
+// 移除 useDB 标志，因为现在是强制性的
+
 )
 
+// 修改 loadConfig 函数
+func loadConfig() error {
+    data, err := os.ReadFile(".env.json")
+    if err != nil {
+        if os.IsNotExist(err) {
+            // 如果配置文件不存在,尝试获取 eth0 的 MAC 地址
+            mac, err := getEth0MAC()
+            if err != nil {
+                log.Printf("自动获取MAC地址失败: %v", err)
+            }
+            
+            // 创建默认配置
+            config = Config{
+                Port:       11434,
+                GatewayMAC: mac, // 使用获取到的 MAC 地址
+                InputFile:  "ip.txt",
+                OutputFile: defaultCSVFile,
+                ZmapThreads: defaultZmapThreads,
+            }
+            // 保存默认配置
+            return saveConfig()
+        }
+        return fmt.Errorf("读取配置文件失败: %w", err)
+    }
+
+    if err := json.Unmarshal(data, &config); err != nil {
+        return fmt.Errorf("解析配置文件失败: %w", err)
+    }
+
+    // 如果配置中的 GatewayMAC 为空,尝试获取 eth0 的 MAC 地址
+    if config.GatewayMAC == "" {
+        mac, err := getEth0MAC()
+        if err != nil {
+            log.Printf("自动获取MAC地址失败: %v", err)
+        } else {
+            config.GatewayMAC = mac
+            // 保存更新后的配置
+            if err := saveConfig(); err != nil {
+                log.Printf("保存更新后的配置失败: %v", err)
+            }
+        }
+    }
+
+    // 使用配置更新相关变量
+    port = config.Port
+    *gatewayMAC = config.GatewayMAC
+    *inputFile = config.InputFile
+    *outputFile = config.OutputFile
+    *zmapThreads = config.ZmapThreads
+
+    return nil
+}
+
+func saveConfig() error {
+    // 更新配置对象
+    config.Port = port
+    config.GatewayMAC = *gatewayMAC
+    config.InputFile = *inputFile
+    config.OutputFile = *outputFile
+    config.ZmapThreads = *zmapThreads
+
+    data, err := json.MarshalIndent(config, "", "  ")
+    if err != nil {
+        return fmt.Errorf("序列化配置失败: %w", err)
+    }
+
+    if err := os.WriteFile(".env", data, 0644); err != nil {
+        return fmt.Errorf("保存配置文件失败: %w", err)
+    }
+
+    return nil
+}
+
 type ScanResult struct {
-	IP     string      `bson:"ip"`
-	Models []ModelInfo `bson:"models"`
+    IP     string      `json:"ip" bson:"ip"`
+    Models []ModelInfo `json:"models" bson:"models"`
 }
 
 type ModelInfo struct {
-	Name           string        `bson:"name"`
-	FirstTokenDelay time.Duration `bson:"first_token_delay"`
-	TokensPerSec   float64       `bson:"tokens_per_sec"`
-	Status         string        `bson:"status"`
+    Name           string        `json:"name" bson:"name"`
+    FirstTokenDelay time.Duration `json:"first_token_delay" bson:"first_token_delay"`
+    TokensPerSec   float64       `json:"tokens_per_sec" bson:"tokens_per_sec"`
+    Status         string        `json:"status" bson:"status"`
 }
 
 func init() {
-	flag.Usage = func() {
-		helpText := `Ollama节点扫描工具 v2.2 https://t.me/+YfCVhGWyKxoyMDhl
-默认功能:
-- 自动执行性能测试
-- 结果导出到%s
-使用方法:
-%s [参数]
-参数说明:`
-		fmt.Fprintf(os.Stderr, helpText, defaultCSVFile, os.Args[0])
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, `
-示例:
-%s -gateway-mac aa:bb:cc:dd:ee:ff
-%s -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
-%s -gateway-mac aa:bb:cc:dd:ee:ff -T 20
-`, os.Args[0], os.Args[0], os.Args[0]) // 添加 -T 参数的示例
-
-	}
-
-	httpClient = &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:    maxIdleConns,
-			MaxIdleConnsPerHost: maxIdleConns,
-			IdleConnTimeout: idleConnTimeout,
-		},
-		Timeout: timeout,
-	}
+    // 命令行参数仍然保留,但作为覆盖配置文件的选项
+    gatewayMAC = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
+    inputFile = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
+    outputFile = flag.String("output", defaultCSVFile, "CSV输出文件路径")
+    disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
+    benchPrompt = flag.String("prompt", "为什么太阳会发光？用一句话回答", "性能测试提示词")
     zmapThreads = flag.Int("T", defaultZmapThreads, "zmap 线程数 (默认为 10)")
-	resultsChan = make(chan ScanResult, 100)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+    flag.Usage = func() {
+		helpText := fmt.Sprintf(`Ollama节点扫描工具 v2.2.1 https://t.me/Ollama_Scanner
+		默认功能:
+		- 自动执行性能测试
+		- 结果导出到%s和MongoDB
+		
+		使用方法:
+		%s [参数]
+		
+		MongoDB配置:
+		  -mongo-uri    MongoDB连接URI (默认: mongodb://localhost:27017)
+		必须配置有效的MongoDB连接才能运行程序
+		
+		参数说明:
+		`, defaultCSVFile, os.Args[0])
+
+        fmt.Fprintf(os.Stderr, helpText)
+        flag.PrintDefaults()
+
+        examples := fmt.Sprintf(`
+基础使用示例:
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -T 20
+
+MongoDB支持示例:
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -use-db
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -use-db -mongo-uri mongodb://user:pass@host:port
+`, os.Args[0])
+
+        fmt.Fprintf(os.Stderr, examples)
+    }
+
+    // 加载配置文件
+    if err := loadConfig(); err != nil {
+        log.Printf("加载配置文件失败: %v, 使用默认配置", err)
+    }
+
+    httpClient = &http.Client{
+        Transport: &http.Transport{
+            MaxIdleConns:        maxIdleConns,
+            MaxIdleConnsPerHost: maxIdleConns,
+            IdleConnTimeout:     idleConnTimeout,
+        },
+        Timeout: timeout,
+    }
+    resultsChan = make(chan ScanResult, 100)
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
+type Progress struct {
+    mu sync.Mutex
+    total int
+    current int
+    startTime time.Time
+}
+
+// 添加获取MAC地址的函数
+func getEth0MAC() (string, error) {
+    ifaces, err := net.Interfaces()
+    if err != nil {
+        return "", fmt.Errorf("获取网络接口失败: %w", err)
+    }
+
+    for _, iface := range ifaces {
+        // 查找 eth0 接口
+        if iface.Name == "eth0" {
+            mac := iface.HardwareAddr.String()
+            if mac != "" {
+                return mac, nil
+            }
+        }
+    }
+    return "", fmt.Errorf("未找到 eth0 网卡或获取MAC地址失败")
+}
+
+func (p *Progress) Init(total int) {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+    p.total = total
+    p.current = 0
+    p.startTime = time.Now()
+}
+
+func (p *Progress) Increment() {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+    p.current++
+    p.printProgress()
+}
+
+func (p *Progress) printProgress() {
+    percentage := float64(p.current) / float64(p.total) * 100
+    elapsed := time.Since(p.startTime)
+    remainingTime := time.Duration(0)
+    if p.current > 0 {
+        remainingTime = time.Duration(float64(elapsed) / float64(p.current) * float64(p.total-p.current))
+    }
+    fmt.Printf("\r进度: %.1f%% (%d/%d) 已用时间: %v 预计剩余: %v", 
+        percentage, p.current, p.total, elapsed.Round(time.Second), remainingTime.Round(time.Second))
+}
+
+// 增加断点续扫功能
+const (
+    // ...existing code...
+    stateFile = "scan_state.json"  // 状态文件名
+)
+
+var (
+    // ...existing code...
+    resumeScan = flag.Bool("resume", false, "从上次中断处继续扫描")
+)
+
+// ScanState 结构体用于保存扫描状态
+type ScanState struct {
+    ScannedIPs  map[string]bool    `json:"scanned_ips"`
+    LastScanTime time.Time         `json:"last_scan_time"`
+    TotalIPs     int              `json:"total_ips"`
+    Config       ScanConfig        `json:"config"`
+}
+
+type ScanConfig struct {
+    GatewayMAC  string `json:"gateway_mac"`
+    InputFile   string `json:"input_file"`
+    OutputFile  string `json:"output_file"`
+    DisableBench bool  `json:"disable_bench"`
+}
+
+// saveState 函数用于保存扫描状态到文件中
+func saveState(state *ScanState) error {
+    data, err := json.MarshalIndent(state, "", "  ")
+    if err != nil {
+        return fmt.Errorf("序列化状态失败: %w", err)
+    }
+
+    if err := os.WriteFile(stateFile, data, 0644); err != nil {
+        return fmt.Errorf("保存状态文件失败: %w", err)
+    }
+
+    return nil
+}
+
+func loadState() (*ScanState, error) {
+    data, err := os.ReadFile(stateFile)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return nil, nil
+        }
+        return nil, fmt.Errorf("读取状态文件失败: %w", err)
+    }
+
+    var state ScanState
+    if err := json.Unmarshal(data, &state); err != nil {
+        return nil, fmt.Errorf("解析状态文件失败: %w", err)
+    }
+
+    return &state, nil
+}
+
+func validateStateConfig(state *ScanState) bool {
+    return state.Config.GatewayMAC == *gatewayMAC &&
+           state.Config.InputFile == *inputFile &&
+           state.Config.OutputFile == *outputFile &&
+           state.Config.DisableBench == *disableBench
+}
+
+// main 函数是程序的入口点,负责初始化程序、检查并安装 zmap、设置信号处理和启动扫描过程.
+// 在 main 函数中修改 MongoDB 初始化逻辑
 func main() {
-	flag.Parse()
+    flag.Parse()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
 
-	// 初始化 MongoDB 客户端
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+    // MongoDB 强制性初始化
+    clientOptions := options.Client().ApplyURI(*mongoURI)
+    client, err := mongo.Connect(ctx, clientOptions)
+    if err != nil {
+        log.Fatalf("❌ MongoDB连接失败: %v\n必须配置有效的MongoDB连接才能继续运行", err)
+    }
+    mongoClient = client
+    defer mongoClient.Disconnect(ctx)
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
-	if err != nil {
-		log.Fatalf("无法连接到 MongoDB: %v", err)
+    // 测试连接
+    err = mongoClient.Ping(ctx, nil)
+    if err != nil {
+        log.Fatalf("❌ MongoDB连接测试失败: %v\n必须配置有效的MongoDB连接才能继续运行", err)
+    }
+    log.Printf("✅ MongoDB连接成功: %s", *mongoURI)
+
+
+	// 检查并安装 zmap,如果未安装则尝试自动安装
+	// Check and install zmap if it's not already installed
+	if err := checkAndInstallZmap(); err != nil {
+		// 打印无法安装 zmap 的错误信息
+		log.Printf("❌ 无法安装 zmap: %v\n 请手动安装 zmap 后重试\n", err)
+		// 提示用户手动安装 zmap 的链接
+        fmt.Printf("请确认已安装 zmap,或手动安装后重试 (https://github.com/zmap/zmap)\n")
+		// 询问用户是否跳过自动安装 zmap 并继续执行程序
+		fmt.Printf("是否跳过自动安装 zmap 并继续执行程序？ (y/n): ")
+		var answer string
+		// 读取用户输入
+		fmt.Scanln(&answer)
+		// 如果用户输入不是 'y',则退出程序
+		if strings.ToLower(answer) != "y" {
+			os.Exit(1)
+		}
 	}
-	mongoClient = client
-	defer mongoClient.Disconnect(ctx)
 
-	// 其他初始化逻辑
+	// 初始化 CSV 写入器,用于将扫描结果保存到文件中
 	initCSVWriter()
+	// 确保在函数退出时关闭 CSV 文件
 	defer csvFile.Close()
+	// 设置信号处理,以便在收到终止信号时清理资源并退出程序
 	setupSignalHandler(cancel)
-
+	// 启动扫描过程,如果扫描失败则打印错误信息
 	if err := runScanProcess(ctx); err != nil {
 		fmt.Printf("❌ 扫描失败: %v\n", err)
 	}
 }
-
-func resultHandler() {
-	collection := mongoClient.Database("ollama_scan").Collection("results")
-
-	for res := range resultsChan {
-		printResult(res)
-		writeCSV(res)
-
-		// 将结果转换为 BSON 格式
-		doc := bson.M{
-			"ip":     res.IP,
-			"models": res.Models,
-		}
-
-		// 插入到 MongoDB
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_, err := collection.InsertOne(ctx, doc)
-		if err != nil {
-			log.Printf("⚠️ 插入 MongoDB 失败: %v\n", err)
-		}
-	}
-}
-
 
 
 // checkAndInstallZmap 检查系统中是否安装了 zmap,如果未安装则尝试自动安装.
@@ -261,17 +509,21 @@ func initCSVWriter() {
 
 
 func setupSignalHandler(cancel context.CancelFunc) {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		cancel()
-		fmt.Println("\n🛑 收到终止信号,正在清理资源...")
-		if csvWriter != nil {
-			csvWriter.Flush()
-		}
-		os.Exit(1)
-	}()
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-sigCh
+        cancel()
+        fmt.Println("\n🛑 收到终止信号,正在清理资源...")
+        if csvWriter != nil {
+            csvWriter.Flush()
+        }
+        // 保存配置
+        if err := saveConfig(); err != nil {
+            log.Printf("保存配置失败: %v", err)
+        }
+        os.Exit(1)
+    }()
 }
 
 func runScanProcess(ctx context.Context) error {
@@ -288,15 +540,21 @@ func runScanProcess(ctx context.Context) error {
 }
 
 func validateInput() error {
-	if *gatewayMAC == "" {
-		return fmt.Errorf("必须指定网关MAC地址")
-	}
+    // 如果命令行参数中未指定 MAC 地址,尝试获取 eth0 的 MAC 地址
+    if *gatewayMAC == "" {
+        mac, err := getEth0MAC()
+        if err != nil {
+            return fmt.Errorf("必须指定网关MAC地址,自动获取失败: %v", err)
+        }
+        *gatewayMAC = mac
+        log.Printf("自动使用 eth0 网卡 MAC 地址: %s", mac)
+    }
 
-	if _, err := os.Stat(*inputFile); os.IsNotExist(err) {
-		return fmt.Errorf("输入文件不存在: %s", *inputFile)
-	}
+    if _, err := os.Stat(*inputFile); os.IsNotExist(err) {
+        return fmt.Errorf("输入文件不存在: %s", *inputFile)
+    }
 
-	return nil
+    return nil
 }
 
 func execZmap() error {
@@ -313,53 +571,165 @@ func execZmap() error {
 	return cmd.Run()
 }
 
+// v2.2.1支持断点续扫功能
 func processResults(ctx context.Context) error {
-	file, err := os.Open(*outputFile)
-	if err != nil {
-		return fmt.Errorf("打开结果文件失败: %w", err)
-	}
-	defer file.Close()
+    file, err := os.Open(*outputFile)
+    if err != nil {
+        return fmt.Errorf("打开结果文件失败: %w", err)
+    }
+    defer file.Close()
 
-	ips := make(chan string, maxWorkers*2)
-	var wg sync.WaitGroup
+    // 加载之前的扫描状态
+    var state *ScanState
+    if *resumeScan {
+        state, err = loadState()
+        if err != nil {
+            return fmt.Errorf("加载扫描状态失败: %w", err)
+        }
+        if state != nil && !validateStateConfig(state) {
+            return fmt.Errorf("扫描配置已更改,无法继续之前的扫描")
+        }
+    }
 
-	// 启动 workers 来发现模型
-	for i := 0; i < maxWorkers; i++ {
-		wg.Add(1)
-		go worker(ctx, &wg, ips)
-	}
+    if state == nil {
+        state = &ScanState{
+            ScannedIPs: make(map[string]bool),
+            Config: ScanConfig{
+                GatewayMAC:   *gatewayMAC,
+                InputFile:    *inputFile,
+                OutputFile:   *outputFile,
+                DisableBench: *disableBench,
+            },
+        }
+    }
 
-	// 启动 resultHandler 来处理扫描结果
-	var rhWg sync.WaitGroup
-	rhWg.Add(1)
-	go func() {
-		defer rhWg.Done()
-		resultHandler()
-	}()
+    // 计算总IP数并更新进度
+    scanner := bufio.NewScanner(file)
+    if state.TotalIPs == 0 {
+        for scanner.Scan() {
+            if net.ParseIP(strings.TrimSpace(scanner.Text())) != nil {
+                state.TotalIPs++
+            }
+        }
+        file.Seek(0, 0)
+    }
 
+    progress := &Progress{}
+    progress.Init(state.TotalIPs)
+    progress.current = len(state.ScannedIPs)
 
-	// 将 IP 地址发送到 channel
-	go func() {
-		defer close(ips)
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			ip := strings.TrimSpace(scanner.Text())
-			if net.ParseIP(ip) != nil {
-				ips <- ip
-			}
-		}
-	}()
+    ips := make(chan string, maxWorkers*2)
+    var wg sync.WaitGroup
 
-	wg.Wait()
-	close(resultsChan) // 关闭 resultsChan,通知 resultHandler
+    // 定期保存扫描状态
+    stopSaving := make(chan struct{})
+    go func() {
+        ticker := time.NewTicker(30 * time.Second)
+        defer ticker.Stop()
+        for {
+            select {
+            case <-ticker.C:
+                state.LastScanTime = time.Now()
+                if err := saveState(state); err != nil {
+                    log.Printf("保存扫描状态失败: %v", err)
+                }
+            case <-stopSaving:
+                return
+            }
+        }
+    }()
 
-	rhWg.Wait() // 等待 resultHandler 处理完所有结果
-	csvWriter.Flush()
+    // 修改 worker 函数以支持断点续扫
+    workerWithProgress := func(ctx context.Context, wg *sync.WaitGroup, ips <-chan string) {
+        defer wg.Done()
+        for ip := range ips {
+            select {
+            case <-ctx.Done():
+                return
+            default:
+                if state.ScannedIPs[ip] {
+                    progress.Increment()
+                    continue
+                }
 
-	fmt.Printf("\n✅ 结果已保存至 %s\n", *outputFile)
-	return nil
+                if checkPort(ip) && checkOllama(ip) {
+                    result := ScanResult{IP: ip}
+                    if models := getModels(ip); len(models) > 0 {
+                        models = sortModels(models)
+                        for _, model := range models {
+                            info := ModelInfo{Name: model}
+                            if !*disableBench {
+                                latency, tps, status := benchmarkModel(ip, model)
+                                info.FirstTokenDelay = latency
+                                info.TokensPerSec = tps
+                                info.Status = status
+                            } else {
+                                info.Status = "发现"
+                            }
+                            result.Models = append(result.Models, info)
+                        }
+                        resultsChan <- result
+                    }
+                }
+                state.ScannedIPs[ip] = true
+                progress.Increment()
+            }
+        }
+    }
+
+    // ...existing worker startup code...
+
+    wg.Wait()
+    close(resultsChan)
+    rhWg.Wait()
+    csvWriter.Flush()
+
+    // 保存最终状态
+    close(stopSaving)
+    state.LastScanTime = time.Now()
+    if err := saveState(state); err != nil {
+        log.Printf("保存最终扫描状态失败: %v", err)
+    }
+
+    fmt.Printf("\n✅ 扫描完成,结果已保存至 %s\n", *outputFile)
+    return nil
 }
 
+
+
+
+func resultHandler() {
+    collection := mongoClient.Database("ollama_scan").Collection("results")
+
+    for res := range resultsChan {
+        printResult(res)
+        writeCSV(res)
+
+     // MongoDB存储（现在是强制性的）
+		doc := bson.M{
+			"ip":           res.IP,
+			"models":       res.Models,
+			"scan_time":    time.Now(),
+			"gateway_mac":  *gatewayMAC,
+			"bench_status": !*disableBench,
+			"scan_config": bson.M{
+				"input_file":  *inputFile,
+				"output_file": *outputFile,
+				"threads":     *zmapThreads,
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := collection.InsertOne(ctx, doc)
+		cancel()
+
+		if err != nil {
+			log.Printf("❌ MongoDB存储失败 [%s]: %v", res.IP, err)
+			// 如果存储失败，终止程序
+			log.Fatalf("MongoDB存储失败，程序终止")
+		}
+	}
+}
 
 
 func printResult(res ScanResult) {
@@ -424,25 +794,43 @@ func worker(ctx context.Context, wg *sync.WaitGroup, ips <-chan string) {
 }
 
 func checkPort(ip string) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), timeout)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
+    d := net.Dialer{Timeout: timeout}
+    conn, err := d.Dial("tcp", fmt.Sprintf("%s:%d", ip, port))
+    if err != nil {
+        return false
+    }
+    conn.Close()
+    return true
 }
 
 func checkOllama(ip string) bool {
-	resp, err := httpClient.Get(fmt.Sprintf("http://%s:%d", ip, port))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return false
-	}
-	defer resp.Body.Close()
-	buf := make([]byte, 1024)
-	n, _ := resp.Body.Read(buf)
-	return strings.Contains(string(buf[:n]), "Ollama is running")
-}
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
 
+    req, err := http.NewRequestWithContext(ctx, "GET", 
+        fmt.Sprintf("http://%s:%d", ip, port), nil)
+    if err != nil {
+        return false
+    }
+
+    resp, err := httpClient.Do(req)
+    if err != nil {
+        return false
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return false
+    }
+
+    buf := make([]byte, 1024)
+    n, err := resp.Body.Read(buf)
+    if err != nil && err != io.EOF {
+        return false
+    }
+
+    return strings.Contains(string(buf[:n]), "Ollama is running")
+}
 func getModels(ip string) []string {
 	resp, err := httpClient.Get(fmt.Sprintf("http://%s:%d/api/tags", ip, port))
 	if err != nil || resp.StatusCode != http.StatusOK {

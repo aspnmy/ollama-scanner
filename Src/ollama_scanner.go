@@ -5,6 +5,7 @@
 // 配置文件中的 MAC 地址为空时
 // 命令行参数未指定 MAC 地址时
 // 获取失败时给出相应的错误提示
+// 合并组件zmap和masscan，根据操作系统自动选择扫描器
 package main
 
 import (
@@ -32,38 +33,111 @@ import (
 )
 // 在 const 声明之前添加配置结构体
 type Config struct {
-    Port       int    `json:"port"`
-    GatewayMAC string `json:"gateway_mac"`
-    InputFile  string `json:"input_file"`
-    OutputFile string `json:"output_file"`
-    ZmapThreads int   `json:"zmap_threads"`
+    Port         int    `json:"port"`
+    GatewayMAC   string `json:"gateway_mac"`
+    InputFile    string `json:"input_file"`
+    OutputFile   string `json:"output_file"`
+    ZmapThreads  int    `json:"zmap_threads"`
+    MasscanRate  int    `json:"masscan_rate"`
+    DisableBench bool   `json:"disable_bench"`
+    BenchPrompt  string `json:"bench_prompt"`
 }
 
 const (
-	port            = 11434
-	timeout         = 3 * time.Second
-	maxWorkers      = 200
-	maxIdleConns    = 100
-	idleConnTimeout = 90 * time.Second
-	benchTimeout    = 30 * time.Second
-	defaultCSVFile  = "results.csv"
-	defaultZmapThreads = 10 // zmap 默认线程数
+    port            = 11434
+    timeout         = 3 * time.Second
+    maxWorkers      = 200
+    maxIdleConns    = 100
+    idleConnTimeout = 90 * time.Second
+    benchTimeout    = 30 * time.Second
+    defaultCSVFile  = "results.csv"
+    defaultZmapThreads = 10 // zmap 默认线程数
+    defaultMasscanRate = 1000 // masscan 默认扫描速率
+    defaultBenchPrompt = "为什么太阳会发光？用一句话回答"
 )
 
 var (
-	gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
-	inputFile   = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
-	outputFile  = flag.String("output", defaultCSVFile, "CSV输出文件路径")
-	disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
-	benchPrompt = flag.String("prompt", "为什么太阳会发光？用一句话回答", "性能测试提示词")
-	httpClient  *http.Client
-	csvWriter   *csv.Writer
-	csvFile     *os.File
-    zmapThreads *int	// zmap 线程数
-	resultsChan chan ScanResult
-	allResults  []ScanResult
-	mu          sync.Mutex
+    gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
+    inputFile   = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
+    outputFile  = flag.String("output", defaultCSVFile, "CSV输出文件路径")
+    disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
+    benchPrompt = flag.String("prompt", defaultBenchPrompt, "性能测试提示词")
+    httpClient  *http.Client
+    csvWriter   *csv.Writer
+    csvFile     *os.File
+    zmapThreads *int    // zmap 线程数
+    resultsChan chan ScanResult
+    allResults  []ScanResult
+    mu          sync.Mutex
+    scannerType string  // 扫描器类型 (zmap/masscan)
+    masscanRate = flag.Int("rate", defaultMasscanRate, "masscan 扫描速率 (每秒扫描的包数)")
+    config      Config
 )
+
+// 选择合适的扫描器并初始化
+func initScanner() error {
+    osName := runtime.GOOS
+    if osName == "windows" {
+        scannerType = "masscan"
+        log.Printf("Windows 系统，使用 masscan 扫描器")
+    } else {
+        scannerType = "zmap"
+        log.Printf("Unix/Linux 系统，使用 zmap 扫描器")
+    }
+
+    return checkAndInstallScanner()
+}
+
+// 检查并安装扫描器
+func checkAndInstallScanner() error {
+    if scannerType == "masscan" {
+        return checkAndInstallMasscan()
+    }
+    return checkAndInstallZmap()
+}
+
+// 添加 masscan 安装函数
+func checkAndInstallMasscan() error {
+    _, err := exec.LookPath("masscan")
+    if err == nil {
+        log.Println("masscan 已安装")
+        return nil
+    }
+
+    log.Println("masscan 未安装, 尝试自动安装...")
+    osName := runtime.GOOS
+
+    switch osName {
+    case "linux":
+        // 尝试使用 apt
+        if err := exec.Command("apt", "-v").Run(); err == nil {
+            cmd := exec.Command("sudo", "apt-get", "update")
+            if err := cmd.Run(); err != nil {
+                return fmt.Errorf("apt-get update 失败: %w", err)
+            }
+            cmd = exec.Command("sudo", "apt-get", "install", "-y", "masscan")
+            if err := cmd.Run(); err != nil {
+                return fmt.Errorf("安装 masscan 失败: %w", err)
+            }
+        } else {
+            // 尝试使用 yum
+            if err := exec.Command("yum", "-v").Run(); err == nil {
+                cmd := exec.Command("sudo", "yum", "install", "-y", "masscan")
+                if err := cmd.Run(); err != nil {
+                    return fmt.Errorf("安装 masscan 失败: %w", err)
+                }
+            } else {
+                return fmt.Errorf("无法找到包管理器")
+            }
+        }
+    default:
+        return fmt.Errorf("不支持在 %s 系统上自动安装 masscan", osName)
+    }
+
+    log.Println("masscan 安装完成")
+    return nil
+}
+
 // 修改 loadConfig 函数
 func loadConfig() error {
     data, err := os.ReadFile(".env.json")
@@ -77,11 +151,14 @@ func loadConfig() error {
             
             // 创建默认配置
             config = Config{
-                Port:       11434,
-                GatewayMAC: mac, // 使用获取到的 MAC 地址
-                InputFile:  "ip.txt",
-                OutputFile: defaultCSVFile,
-                ZmapThreads: defaultZmapThreads,
+                Port:         port,
+                GatewayMAC:   mac, // 使用获取到的 MAC 地址
+                InputFile:    "ip.txt",
+                OutputFile:   defaultCSVFile,
+                ZmapThreads:  defaultZmapThreads,
+                MasscanRate:  defaultMasscanRate,
+                DisableBench: false,
+                BenchPrompt:  defaultBenchPrompt,
             }
             // 保存默认配置
             return saveConfig()
@@ -113,6 +190,9 @@ func loadConfig() error {
     *inputFile = config.InputFile
     *outputFile = config.OutputFile
     *zmapThreads = config.ZmapThreads
+    *masscanRate = config.MasscanRate
+    *disableBench = config.DisableBench
+    *benchPrompt = config.BenchPrompt
 
     return nil
 }
@@ -124,13 +204,16 @@ func saveConfig() error {
     config.InputFile = *inputFile
     config.OutputFile = *outputFile
     config.ZmapThreads = *zmapThreads
+    config.MasscanRate = *masscanRate
+    config.DisableBench = *disableBench
+    config.BenchPrompt = *benchPrompt
 
     data, err := json.MarshalIndent(config, "", "  ")
     if err != nil {
         return fmt.Errorf("序列化配置失败: %w", err)
     }
 
-    if err := os.WriteFile(".env", data, 0644); err != nil {
+    if err := os.WriteFile(".env.json", data, 0644); err != nil {
         return fmt.Errorf("保存配置文件失败: %w", err)
     }
 
@@ -150,47 +233,61 @@ type ModelInfo struct {
 }
 
 func init() {
-	    // 命令行参数仍然保留,但作为覆盖配置文件的选项
-		gatewayMAC = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
-		inputFile = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
-		outputFile = flag.String("output", defaultCSVFile, "CSV输出文件路径")
-		disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
-		benchPrompt = flag.String("prompt", "为什么太阳会发光？用一句话回答", "性能测试提示词")
-		zmapThreads = flag.Int("T", defaultZmapThreads, "zmap 线程数 (默认为 10)")
-	
-	flag.Usage = func() {
-		helpText := `Ollama节点扫描工具 v2.2 https://t.me/+YfCVhGWyKxoyMDhl
+    // 命令行参数仍然保留,但作为覆盖配置文件的选项
+    gatewayMAC = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
+    inputFile = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
+    outputFile = flag.String("output", defaultCSVFile, "CSV输出文件路径")
+    disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
+    benchPrompt = flag.String("prompt", defaultBenchPrompt, "性能测试提示词")
+    zmapThreads = flag.Int("T", defaultZmapThreads, "zmap 线程数 (默认为 10)")
+    masscanRate = flag.Int("rate", defaultMasscanRate, "masscan 扫描速率 (每秒扫描的包数)")
+
+    flag.Usage = func() {
+        helpText := fmt.Sprintf(`Ollama节点扫描工具 v2.2.1 https://t.me/+YfCVhGWyKxoyMDhl
 默认功能:
 - 自动执行性能测试
 - 结果导出到%s
+- Windows系统使用masscan，其他系统使用zmap
+
 使用方法:
 %s [参数]
-参数说明:`
-		fmt.Fprintf(os.Stderr, helpText, defaultCSVFile, os.Args[0])
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, `
-示例:
-%s -gateway-mac aa:bb:cc:dd:ee:ff
-%s -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
-%s -gateway-mac aa:bb:cc:dd:ee:ff -T 20
-`, os.Args[0], os.Args[0], os.Args[0]) // 添加 -T 参数的示例
 
-	}
+参数说明:
+`, defaultCSVFile, os.Args[0])
+
+        fmt.Fprintf(os.Stderr, helpText)
+        flag.PrintDefaults()
+
+        examples := fmt.Sprintf(`
+基础使用示例:
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -no-bench -output custom.csv
+  
+Zmap参数 (Unix/Linux):
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -T 20
+
+Masscan参数 (Windows):
+  %[1]s -gateway-mac aa:bb:cc:dd:ee:ff -rate 2000
+`, os.Args[0])
+
+        fmt.Fprintf(os.Stderr, examples)
+    }
+
     // 加载配置文件
     if err := loadConfig(); err != nil {
         log.Printf("加载配置文件失败: %v, 使用默认配置", err)
     }
 
-	httpClient = &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:    maxIdleConns,
-			MaxIdleConnsPerHost: maxIdleConns,
-			IdleConnTimeout: idleConnTimeout,
-		},
-		Timeout: timeout,
-	}
-	resultsChan = make(chan ScanResult, 100)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+    httpClient = &http.Client{
+        Transport: &http.Transport{
+            MaxIdleConns:    maxIdleConns,
+            MaxIdleConnsPerHost: maxIdleConns,
+            IdleConnTimeout: idleConnTimeout,
+        },
+        Timeout: timeout,
+    }
+    resultsChan = make(chan ScanResult, 100)
+    log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
 type Progress struct {
@@ -296,7 +393,7 @@ func loadState() (*ScanState, error) {
 
     var state ScanState
     if err := json.Unmarshal(data, &state); err != nil {
-        return nil, fmt.Errorf("解析状态文件失败: %w", err)
+        return fmt.Errorf("解析状态文件失败: %w", err)
     }
 
     return &state, nil
@@ -311,41 +408,32 @@ func validateStateConfig(state *ScanState) bool {
 
 // main 函数是程序的入口点,负责初始化程序、检查并安装 zmap、设置信号处理和启动扫描过程.
 func main() {
-	// 解析命令行参数
-	flag.Parse()
-	// 创建一个可取消的上下文,用于控制程序的生命周期
-	ctx, cancel := context.WithCancel(context.Background())
-	// 确保在函数退出时取消上下文,释放相关资源
-	defer cancel()
+    // 解析命令行参数
+    flag.Parse()
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
 
-	// 检查并安装 zmap,如果未安装则尝试自动安装
-	// Check and install zmap if it's not already installed
-	if err := checkAndInstallZmap(); err != nil {
-		// 打印无法安装 zmap 的错误信息
-		log.Printf("❌ 无法安装 zmap: %v\n 请手动安装 zmap 后重试\n", err)
-		// 提示用户手动安装 zmap 的链接
-        fmt.Printf("请确认已安装 zmap,或手动安装后重试 (https://github.com/zmap/zmap)\n")
-		// 询问用户是否跳过自动安装 zmap 并继续执行程序
-		fmt.Printf("是否跳过自动安装 zmap 并继续执行程序？ (y/n): ")
-		var answer string
-		// 读取用户输入
-		fmt.Scanln(&answer)
-		// 如果用户输入不是 'y',则退出程序
-		if strings.ToLower(answer) != "y" {
-			os.Exit(1)
-		}
-	}
+    // 初始化扫描器
+    if err := initScanner(); err != nil {
+        log.Printf("❌ 初始化扫描器失败: %v\n", err)
+        fmt.Printf("是否继续执行程序？(y/n): ")
+        var answer string
+        fmt.Scanln(&answer)
+        if strings.ToLower(answer) != "y" {
+            os.Exit(1)
+        }
+    }
 
-	// 初始化 CSV 写入器,用于将扫描结果保存到文件中
-	initCSVWriter()
-	// 确保在函数退出时关闭 CSV 文件
-	defer csvFile.Close()
-	// 设置信号处理,以便在收到终止信号时清理资源并退出程序
-	setupSignalHandler(cancel)
-	// 启动扫描过程,如果扫描失败则打印错误信息
-	if err := runScanProcess(ctx); err != nil {
-		fmt.Printf("❌ 扫描失败: %v\n", err)
-	}
+    // 初始化 CSV 写入器,用于将扫描结果保存到文件中
+    initCSVWriter()
+    // 确保在函数退出时关闭 CSV 文件
+    defer csvFile.Close()
+    // 设置信号处理,以便在收到终止信号时清理资源并退出程序
+    setupSignalHandler(cancel)
+    // 启动扫描过程,如果扫描失败则打印错误信息
+    if err := runScanProcess(ctx); err != nil {
+        fmt.Printf("❌ 扫描失败: %v\n", err)
+    }
 }
 
 
@@ -479,16 +567,16 @@ func setupSignalHandler(cancel context.CancelFunc) {
 }
 
 func runScanProcess(ctx context.Context) error {
-	if err := validateInput(); err != nil {
-		return err
-	}
+    if err := validateInput(); err != nil {
+        return err
+    }
 
-	fmt.Printf("🔍 开始扫描,使用网关: %s\n", *gatewayMAC)
-	if err := execZmap(); err != nil {
-		return err
-	}
+    fmt.Printf("🔍 开始扫描,使用网关: %s\n", *gatewayMAC)
+    if err := execScan(); err != nil {
+        return err
+    }
 
-	return processResults(ctx)
+    return processResults(ctx)
 }
 
 func validateInput() error {
@@ -508,7 +596,26 @@ func validateInput() error {
 
     return nil
 }
+func execScan() error {
+    if scannerType == "masscan" {
+        return execMasscan()
+    }
+    return execZmap()
+}
 
+func execMasscan() error {
+    cmd := exec.Command("masscan",
+        "-p", fmt.Sprintf("%d", port),
+        "--rate", fmt.Sprintf("%d", *masscanRate),
+        "--interface", "eth0",
+        "--source-ip", *gatewayMAC,
+        "-iL", *inputFile,
+        "-oL", *outputFile)
+    
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+    return cmd.Run()
+}
 func execZmap() error {
     threads := *zmapThreads // 获取 zmap 线程数
 
