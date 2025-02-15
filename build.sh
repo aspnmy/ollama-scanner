@@ -6,15 +6,17 @@ buildname="ollama-scanner" # 镜像名称
 buildver="v2.2" # 镜像版本
 buildurl="docker.io" # 镜像推送的 URL 位置
 
-
-
-
-
-
 TELEGRAM_BOT_TOKEN="your_telegram_bot_token" # Telegram Bot Token
 TELEGRAM_CHAT_ID="your_telegram_chat_id" # Telegram 群组 Chat ID
 
 release_dir="Releases/$buildver" # 发布目录
+
+
+builddir_core="dockerfile-ollama-scaner" 
+builddir_mongodb="dockerfile-ollama-scaner-mongoDB" 
+builddir_core_arm64="dockerfile-ollama-scaner-arm64" 
+builddir_mongodb_arm64="dockerfile-ollama-scaner-arm64-mongoDB" 
+
 
 # 初始化全局变量
 init() {
@@ -46,25 +48,6 @@ init() {
         buildver=$(jq -r '.buildver // empty' "$env_file")
         if [ -n "$buildver" ]; then
             echo "从 env.json 读取 buildver: $buildver"
-            # 判断 buildver 是否大于 v2.2.0
-        if printf '%s\n' "$buildver" "v2.2.0" | sort -Vr | head -n 1 | grep -q "$buildver"; then
-                echo "检测到 buildver 小于或等于 v2.2.0,不包含 MongoDB 相关逻辑."
-            builddir_masscan="dockerfile-masscan-mongoDB" # masscan Dockerfile 目录
-            builddir_zmap="dockerfile-zmap-mongoDB" # zmap Dockerfile 目录
-            builddir_zmap_arm64="dockerfile-zmap-arm64-mongoDB" # zmap Dockerfile 目录
-            buildtag_masscan="masscan_mongoDB" # masscan 镜像标签
-            buildtag_zmap="zmap_mongoDB" # zmap 镜像标签
-            buildtag_zmap_arm64="zmap_arm64_mongoDB" # zmap_arm64 镜像标签      
-        else
-            builddir_masscan="dockerfile-masscan" # masscan Dockerfile 目录
-            builddir_zmap="dockerfile-zmap" # zmap Dockerfile 目录
-            builddir_zmap_arm64="dockerfile-zmap-arm64" # zmap Dockerfile 目录
-            buildtag_masscan="masscan" # masscan 镜像标签
-            buildtag_zmap="zmap" # zmap 镜像标签
-            buildtag_zmap_arm64="zmap_arm64" # zmap_arm64 镜像标签
-        fi
-            
-            
         else
             buildver="v2.2.0"
         fi
@@ -385,36 +368,49 @@ main() {
     check_and_install_gh
 
     # 使用 make 构建本体
-    make_res="$buildver 支持导出扫描结果到mongoDB数据库"
+    make_res="$buildver v2.2.1 //增加断点续扫功能 支持进度条显示
+// 自动获取 eth0 网卡的 MAC 地址
+// 在以下情况下尝试自动获取 MAC 地址
+// 配置文件不存在时
+// 配置文件中的 MAC 地址为空时
+// 命令行参数未指定 MAC 地址时
+// 获取失败时给出相应的错误提示
+// 合并组件zmap和masscan,根据操作系统自动选择扫描器"
     build_makefile  "$buildver" "$make_res"
 
     # 发布到 GitHub Releases
     # publish_to_github_releases "$buildver" "$release_dir/$buildver"
 
 
-    echo "$buildtag_masscan"
+    # 构建 core 镜像
+    core_tag="$buildurl/$builduser/$buildname:$buildver"
+    build_buildah_image $builddir_core $core_tag $buildver
 
-    # 构建 masscan 镜像
-    masscan_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_masscan"
-    build_buildah_image $builddir_masscan $masscan_tag $buildver
+    # 构建 mongodb 镜像
+    mongodb_tag="$buildurl/$builduser/$buildname:$buildver-mongodb"
+    build_buildah_image $builddir_mongodb $mongodb_tag $buildver
 
-    # 构建 zmap 镜像
-    zmap_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap"
-    build_buildah_image $builddir_zmap $zmap_tag $buildver
-
-    # 构建 buildx 跨架构构建zmap_arm64 镜像
+    # 构建 buildx 跨架构构建core_arm64 镜像
     build_platform="linux/arm64"
-    zmap_arm64_tag="$buildurl/$builduser/$buildname:$buildver-$buildtag_zmap_arm64"
-    buildx_buildah_image $builddir_zmap_arm64 $zmap_arm64_tag $buildver $build_platform
+    arm64_tag="$buildurl/$builduser/$buildname:$buildver-arm64"
+    buildx_buildah_image $builddir_core_arm64 $arm64_tag $buildver $build_platform
 
-    # 推送 masscan 镜像
-    push_buildah_image $masscan_tag
+    # 构建 buildx 跨架构构建mongodb_arm64 镜像
+    build_platform="linux/arm64"
+    arm64_tag_mongodb="$buildurl/$builduser/$buildname:$buildver-arm64-mongodb"
+    buildx_buildah_image $builddir_mongodb_arm64 $arm64_tag_mongodb $buildver $build_platform
 
-    # 推送 zmap 镜像
-    push_buildah_image $zmap_tag
+    # 推送 core 镜像
+    push_buildah_image $core_tag
 
-    # 推送 arm64-zmap 镜像
-    push_buildah_image $zmap_arm64_tag
+    # 推送 mongodb 镜像
+    push_buildah_image $mongodb_tag
+
+    # 推送 arm64_tag 镜像
+    push_buildah_image $arm64_tag
+
+    # 推送 arm64_tag_mongodb 镜像
+    push_buildah_image $arm64_tag_mongodb
 }
 
 # 执行主函数

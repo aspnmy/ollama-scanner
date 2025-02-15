@@ -1,7 +1,0 @@
-FROM alpine:latest
-ARG version=v2.2
-ADD ./Releases/${version}/ollama_scanner_masscan-linux-amd64 /usr/local/bin/ollama_scanner
-RUN chmod +x /usr/local/bin/ollama_scanner
-
-# 设置默认命令
-CMD ["ollama_scanner"]

@@ -16,9 +16,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+    "io"
 	"log"
 	"net"
-	"net/http"
+    "net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -29,7 +30,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"net"
 )
 // 在 const 声明之前添加配置结构体
 type Config struct {
@@ -44,7 +44,7 @@ type Config struct {
 }
 
 const (
-    port            = 11434
+    defaultPort     = 11434  // 修改为 defaultPort
     timeout         = 3 * time.Second
     maxWorkers      = 200
     maxIdleConns    = 100
@@ -57,6 +57,7 @@ const (
 )
 
 var (
+    port = defaultPort      // 将 port 改为变量
     gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
     inputFile   = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
     outputFile  = flag.String("output", defaultCSVFile, "CSV输出文件路径")
@@ -140,7 +141,7 @@ func checkAndInstallMasscan() error {
 
 // 修改 loadConfig 函数
 func loadConfig() error {
-    data, err := os.ReadFile(".env.json")
+    data, err := os.ReadFile(".env")
     if err != nil {
         if os.IsNotExist(err) {
             // 如果配置文件不存在,尝试获取 eth0 的 MAC 地址
@@ -213,7 +214,7 @@ func saveConfig() error {
         return fmt.Errorf("序列化配置失败: %w", err)
     }
 
-    if err := os.WriteFile(".env.json", data, 0644); err != nil {
+    if err := os.WriteFile(".env", data, 0644); err != nil {
         return fmt.Errorf("保存配置文件失败: %w", err)
     }
 
@@ -393,7 +394,7 @@ func loadState() (*ScanState, error) {
 
     var state ScanState
     if err := json.Unmarshal(data, &state); err != nil {
-        return fmt.Errorf("解析状态文件失败: %w", err)
+        return nil, fmt.Errorf("解析状态文件失败: %w", err)
     }
 
     return &state, nil
@@ -637,7 +638,7 @@ func processResults(ctx context.Context) error {
         return fmt.Errorf("打开结果文件失败: %w", err)
     }
     defer file.Close()
-
+    var rhWg sync.WaitGroup  // 添加 rhWg 声明
     // 加载之前的扫描状态
     var state *ScanState
     if *resumeScan {
@@ -699,7 +700,7 @@ func processResults(ctx context.Context) error {
     }()
 
     // 修改 worker 函数以支持断点续扫
-    workerWithProgress := func(ctx context.Context, wg *sync.WaitGroup, ips <-chan string) {
+    workerWithProgress := func(ctx context.Context, wg *sync.WaitGroup, ips <-chan string, state *ScanState, progress *Progress) {
         defer wg.Done()
         for ip := range ips {
             select {
@@ -736,10 +737,36 @@ func processResults(ctx context.Context) error {
         }
     }
 
-    // ...existing worker startup code...
+    // 启动工作协程
+    for i := 0; i < maxWorkers; i++ {
+        wg.Add(1)
+        go workerWithProgress(ctx, &wg, ips, state, progress)
+    }
 
+    // 读取IP并发送到通道
+    go func() {
+        scanner := bufio.NewScanner(file)
+        for scanner.Scan() {
+            ip := strings.TrimSpace(scanner.Text())
+            if net.ParseIP(ip) != nil {
+                ips <- ip
+            }
+        }
+        close(ips)
+    }()
+
+    // 启动结果处理协程
+    rhWg.Add(1)
+    go func() {
+        defer rhWg.Done()
+        resultHandler()
+    }()
+
+    // 等待所有工作协程完成
     wg.Wait()
     close(resultsChan)
+
+    // 等待结果处理完成
     rhWg.Wait()
     csvWriter.Flush()
 

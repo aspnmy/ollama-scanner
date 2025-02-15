@@ -1,4 +1,4 @@
-module github.com/aspnmy/ollama_scanner
+module ollama_scanner
 
 go 1.19
 
