@@ -1,4 +1,10 @@
 // v2.2.1 增加断点续扫功能 支持进度条显示
+// 自动获取 eth0 网卡的 MAC 地址
+// 在以下情况下尝试自动获取 MAC 地址：
+// 配置文件不存在时
+// 配置文件中的 MAC 地址为空时
+// 命令行参数未指定 MAC 地址时
+// 获取失败时给出相应的错误提示
 package main
 
 import (
@@ -22,7 +28,16 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"net"
 )
+// 在 const 声明之前添加配置结构体
+type Config struct {
+    Port       int    `json:"port"`
+    GatewayMAC string `json:"gateway_mac"`
+    InputFile  string `json:"input_file"`
+    OutputFile string `json:"output_file"`
+    ZmapThreads int   `json:"zmap_threads"`
+}
 
 const (
 	port            = 11434
@@ -49,6 +64,78 @@ var (
 	allResults  []ScanResult
 	mu          sync.Mutex
 )
+// 修改 loadConfig 函数
+func loadConfig() error {
+    data, err := os.ReadFile(".env.json")
+    if err != nil {
+        if os.IsNotExist(err) {
+            // 如果配置文件不存在,尝试获取 eth0 的 MAC 地址
+            mac, err := getEth0MAC()
+            if err != nil {
+                log.Printf("自动获取MAC地址失败: %v", err)
+            }
+            
+            // 创建默认配置
+            config = Config{
+                Port:       11434,
+                GatewayMAC: mac, // 使用获取到的 MAC 地址
+                InputFile:  "ip.txt",
+                OutputFile: defaultCSVFile,
+                ZmapThreads: defaultZmapThreads,
+            }
+            // 保存默认配置
+            return saveConfig()
+        }
+        return fmt.Errorf("读取配置文件失败: %w", err)
+    }
+
+    if err := json.Unmarshal(data, &config); err != nil {
+        return fmt.Errorf("解析配置文件失败: %w", err)
+    }
+
+    // 如果配置中的 GatewayMAC 为空,尝试获取 eth0 的 MAC 地址
+    if config.GatewayMAC == "" {
+        mac, err := getEth0MAC()
+        if err != nil {
+            log.Printf("自动获取MAC地址失败: %v", err)
+        } else {
+            config.GatewayMAC = mac
+            // 保存更新后的配置
+            if err := saveConfig(); err != nil {
+                log.Printf("保存更新后的配置失败: %v", err)
+            }
+        }
+    }
+
+    // 使用配置更新相关变量
+    port = config.Port
+    *gatewayMAC = config.GatewayMAC
+    *inputFile = config.InputFile
+    *outputFile = config.OutputFile
+    *zmapThreads = config.ZmapThreads
+
+    return nil
+}
+
+func saveConfig() error {
+    // 更新配置对象
+    config.Port = port
+    config.GatewayMAC = *gatewayMAC
+    config.InputFile = *inputFile
+    config.OutputFile = *outputFile
+    config.ZmapThreads = *zmapThreads
+
+    data, err := json.MarshalIndent(config, "", "  ")
+    if err != nil {
+        return fmt.Errorf("序列化配置失败: %w", err)
+    }
+
+    if err := os.WriteFile(".env", data, 0644); err != nil {
+        return fmt.Errorf("保存配置文件失败: %w", err)
+    }
+
+    return nil
+}
 
 type ScanResult struct {
 	IP     string
@@ -63,6 +150,14 @@ type ModelInfo struct {
 }
 
 func init() {
+	    // 命令行参数仍然保留,但作为覆盖配置文件的选项
+		gatewayMAC = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
+		inputFile = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
+		outputFile = flag.String("output", defaultCSVFile, "CSV输出文件路径")
+		disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
+		benchPrompt = flag.String("prompt", "为什么太阳会发光？用一句话回答", "性能测试提示词")
+		zmapThreads = flag.Int("T", defaultZmapThreads, "zmap 线程数 (默认为 10)")
+	
 	flag.Usage = func() {
 		helpText := `Ollama节点扫描工具 v2.2 https://t.me/+YfCVhGWyKxoyMDhl
 默认功能:
@@ -81,6 +176,10 @@ func init() {
 `, os.Args[0], os.Args[0], os.Args[0]) // 添加 -T 参数的示例
 
 	}
+    // 加载配置文件
+    if err := loadConfig(); err != nil {
+        log.Printf("加载配置文件失败: %v, 使用默认配置", err)
+    }
 
 	httpClient = &http.Client{
 		Transport: &http.Transport{
@@ -90,7 +189,6 @@ func init() {
 		},
 		Timeout: timeout,
 	}
-    zmapThreads = flag.Int("T", defaultZmapThreads, "zmap 线程数 (默认为 10)")
 	resultsChan = make(chan ScanResult, 100)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
@@ -100,6 +198,25 @@ type Progress struct {
     total int
     current int
     startTime time.Time
+}
+
+// 添加获取MAC地址的函数
+func getEth0MAC() (string, error) {
+    ifaces, err := net.Interfaces()
+    if err != nil {
+        return "", fmt.Errorf("获取网络接口失败: %w", err)
+    }
+
+    for _, iface := range ifaces {
+        // 查找 eth0 接口
+        if iface.Name == "eth0" {
+            mac := iface.HardwareAddr.String()
+            if mac != "" {
+                return mac, nil
+            }
+        }
+    }
+    return "", fmt.Errorf("未找到 eth0 网卡或获取MAC地址失败")
 }
 
 func (p *Progress) Init(total int) {
@@ -344,17 +461,21 @@ func initCSVWriter() {
 
 
 func setupSignalHandler(cancel context.CancelFunc) {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		cancel()
-		fmt.Println("\n🛑 收到终止信号,正在清理资源...")
-		if csvWriter != nil {
-			csvWriter.Flush()
-		}
-		os.Exit(1)
-	}()
+    sigCh := make(chan os.Signal, 1)
+    signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-sigCh
+        cancel()
+        fmt.Println("\n🛑 收到终止信号,正在清理资源...")
+        if csvWriter != nil {
+            csvWriter.Flush()
+        }
+        // 保存配置
+        if err := saveConfig(); err != nil {
+            log.Printf("保存配置失败: %v", err)
+        }
+        os.Exit(1)
+    }()
 }
 
 func runScanProcess(ctx context.Context) error {
@@ -371,15 +492,21 @@ func runScanProcess(ctx context.Context) error {
 }
 
 func validateInput() error {
-	if *gatewayMAC == "" {
-		return fmt.Errorf("必须指定网关MAC地址")
-	}
+    // 如果命令行参数中未指定 MAC 地址,尝试获取 eth0 的 MAC 地址
+    if *gatewayMAC == "" {
+        mac, err := getEth0MAC()
+        if err != nil {
+            return fmt.Errorf("必须指定网关MAC地址,自动获取失败: %v", err)
+        }
+        *gatewayMAC = mac
+        log.Printf("自动使用 eth0 网卡 MAC 地址: %s", mac)
+    }
 
-	if _, err := os.Stat(*inputFile); os.IsNotExist(err) {
-		return fmt.Errorf("输入文件不存在: %s", *inputFile)
-	}
+    if _, err := os.Stat(*inputFile); os.IsNotExist(err) {
+        return fmt.Errorf("输入文件不存在: %s", *inputFile)
+    }
 
-	return nil
+    return nil
 }
 
 func execZmap() error {
@@ -412,7 +539,7 @@ func processResults(ctx context.Context) error {
             return fmt.Errorf("加载扫描状态失败: %w", err)
         }
         if state != nil && !validateStateConfig(state) {
-            return fmt.Errorf("扫描配置已更改，无法继续之前的扫描")
+            return fmt.Errorf("扫描配置已更改,无法继续之前的扫描")
         }
     }
 
@@ -516,7 +643,7 @@ func processResults(ctx context.Context) error {
         log.Printf("保存最终扫描状态失败: %v", err)
     }
 
-    fmt.Printf("\n✅ 扫描完成，结果已保存至 %s\n", *outputFile)
+    fmt.Printf("\n✅ 扫描完成,结果已保存至 %s\n", *outputFile)
     return nil
 }
 
