@@ -27,3 +27,6 @@ env.json
 
 # vendor directory
 vendor
+*.csv
+*.log
+*.log.*

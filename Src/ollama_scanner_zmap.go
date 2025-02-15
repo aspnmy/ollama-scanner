@@ -1,3 +1,4 @@
+// v2.2.1 增加断点续扫功能 支持进度条显示
 package main
 
 import (
@@ -94,6 +95,102 @@ func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
 
+type Progress struct {
+    mu sync.Mutex
+    total int
+    current int
+    startTime time.Time
+}
+
+func (p *Progress) Init(total int) {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+    p.total = total
+    p.current = 0
+    p.startTime = time.Now()
+}
+
+func (p *Progress) Increment() {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+    p.current++
+    p.printProgress()
+}
+
+func (p *Progress) printProgress() {
+    percentage := float64(p.current) / float64(p.total) * 100
+    elapsed := time.Since(p.startTime)
+    remainingTime := time.Duration(0)
+    if p.current > 0 {
+        remainingTime = time.Duration(float64(elapsed) / float64(p.current) * float64(p.total-p.current))
+    }
+    fmt.Printf("\r进度: %.1f%% (%d/%d) 已用时间: %v 预计剩余: %v", 
+        percentage, p.current, p.total, elapsed.Round(time.Second), remainingTime.Round(time.Second))
+}
+
+// 增加断点续扫功能
+const (
+    // ...existing code...
+    stateFile = "scan_state.json"  // 状态文件名
+)
+
+var (
+    // ...existing code...
+    resumeScan = flag.Bool("resume", false, "从上次中断处继续扫描")
+)
+
+// ScanState 结构体用于保存扫描状态
+type ScanState struct {
+    ScannedIPs  map[string]bool    `json:"scanned_ips"`
+    LastScanTime time.Time         `json:"last_scan_time"`
+    TotalIPs     int              `json:"total_ips"`
+    Config       ScanConfig        `json:"config"`
+}
+
+type ScanConfig struct {
+    GatewayMAC  string `json:"gateway_mac"`
+    InputFile   string `json:"input_file"`
+    OutputFile  string `json:"output_file"`
+    DisableBench bool  `json:"disable_bench"`
+}
+
+// saveState 函数用于保存扫描状态到文件中
+func saveState(state *ScanState) error {
+    data, err := json.MarshalIndent(state, "", "  ")
+    if err != nil {
+        return fmt.Errorf("序列化状态失败: %w", err)
+    }
+
+    if err := os.WriteFile(stateFile, data, 0644); err != nil {
+        return fmt.Errorf("保存状态文件失败: %w", err)
+    }
+
+    return nil
+}
+
+func loadState() (*ScanState, error) {
+    data, err := os.ReadFile(stateFile)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return nil, nil
+        }
+        return nil, fmt.Errorf("读取状态文件失败: %w", err)
+    }
+
+    var state ScanState
+    if err := json.Unmarshal(data, &state); err != nil {
+        return nil, fmt.Errorf("解析状态文件失败: %w", err)
+    }
+
+    return &state, nil
+}
+
+func validateStateConfig(state *ScanState) bool {
+    return state.Config.GatewayMAC == *gatewayMAC &&
+           state.Config.InputFile == *inputFile &&
+           state.Config.OutputFile == *outputFile &&
+           state.Config.DisableBench == *disableBench
+}
 
 // main 函数是程序的入口点,负责初始化程序、检查并安装 zmap、设置信号处理和启动扫描过程.
 func main() {
@@ -299,52 +396,130 @@ func execZmap() error {
 	return cmd.Run()
 }
 
+// v2.2.1支持断点续扫功能
 func processResults(ctx context.Context) error {
-	file, err := os.Open(*outputFile)
-	if err != nil {
-		return fmt.Errorf("打开结果文件失败: %w", err)
-	}
-	defer file.Close()
+    file, err := os.Open(*outputFile)
+    if err != nil {
+        return fmt.Errorf("打开结果文件失败: %w", err)
+    }
+    defer file.Close()
 
-	ips := make(chan string, maxWorkers*2)
-	var wg sync.WaitGroup
+    // 加载之前的扫描状态
+    var state *ScanState
+    if *resumeScan {
+        state, err = loadState()
+        if err != nil {
+            return fmt.Errorf("加载扫描状态失败: %w", err)
+        }
+        if state != nil && !validateStateConfig(state) {
+            return fmt.Errorf("扫描配置已更改，无法继续之前的扫描")
+        }
+    }
 
-	// 启动 workers 来发现模型
-	for i := 0; i < maxWorkers; i++ {
-		wg.Add(1)
-		go worker(ctx, &wg, ips)
-	}
+    if state == nil {
+        state = &ScanState{
+            ScannedIPs: make(map[string]bool),
+            Config: ScanConfig{
+                GatewayMAC:   *gatewayMAC,
+                InputFile:    *inputFile,
+                OutputFile:   *outputFile,
+                DisableBench: *disableBench,
+            },
+        }
+    }
 
-	// 启动 resultHandler 来处理扫描结果
-	var rhWg sync.WaitGroup
-	rhWg.Add(1)
-	go func() {
-		defer rhWg.Done()
-		resultHandler()
-	}()
+    // 计算总IP数并更新进度
+    scanner := bufio.NewScanner(file)
+    if state.TotalIPs == 0 {
+        for scanner.Scan() {
+            if net.ParseIP(strings.TrimSpace(scanner.Text())) != nil {
+                state.TotalIPs++
+            }
+        }
+        file.Seek(0, 0)
+    }
 
+    progress := &Progress{}
+    progress.Init(state.TotalIPs)
+    progress.current = len(state.ScannedIPs)
 
-	// 将 IP 地址发送到 channel
-	go func() {
-		defer close(ips)
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			ip := strings.TrimSpace(scanner.Text())
-			if net.ParseIP(ip) != nil {
-				ips <- ip
-			}
-		}
-	}()
+    ips := make(chan string, maxWorkers*2)
+    var wg sync.WaitGroup
 
-	wg.Wait()
-	close(resultsChan) // 关闭 resultsChan,通知 resultHandler
+    // 定期保存扫描状态
+    stopSaving := make(chan struct{})
+    go func() {
+        ticker := time.NewTicker(30 * time.Second)
+        defer ticker.Stop()
+        for {
+            select {
+            case <-ticker.C:
+                state.LastScanTime = time.Now()
+                if err := saveState(state); err != nil {
+                    log.Printf("保存扫描状态失败: %v", err)
+                }
+            case <-stopSaving:
+                return
+            }
+        }
+    }()
 
-	rhWg.Wait() // 等待 resultHandler 处理完所有结果
-	csvWriter.Flush()
+    // 修改 worker 函数以支持断点续扫
+    workerWithProgress := func(ctx context.Context, wg *sync.WaitGroup, ips <-chan string) {
+        defer wg.Done()
+        for ip := range ips {
+            select {
+            case <-ctx.Done():
+                return
+            default:
+                if state.ScannedIPs[ip] {
+                    progress.Increment()
+                    continue
+                }
 
-	fmt.Printf("\n✅ 结果已保存至 %s\n", *outputFile)
-	return nil
+                if checkPort(ip) && checkOllama(ip) {
+                    result := ScanResult{IP: ip}
+                    if models := getModels(ip); len(models) > 0 {
+                        models = sortModels(models)
+                        for _, model := range models {
+                            info := ModelInfo{Name: model}
+                            if !*disableBench {
+                                latency, tps, status := benchmarkModel(ip, model)
+                                info.FirstTokenDelay = latency
+                                info.TokensPerSec = tps
+                                info.Status = status
+                            } else {
+                                info.Status = "发现"
+                            }
+                            result.Models = append(result.Models, info)
+                        }
+                        resultsChan <- result
+                    }
+                }
+                state.ScannedIPs[ip] = true
+                progress.Increment()
+            }
+        }
+    }
+
+    // ...existing worker startup code...
+
+    wg.Wait()
+    close(resultsChan)
+    rhWg.Wait()
+    csvWriter.Flush()
+
+    // 保存最终状态
+    close(stopSaving)
+    state.LastScanTime = time.Now()
+    if err := saveState(state); err != nil {
+        log.Printf("保存最终扫描状态失败: %v", err)
+    }
+
+    fmt.Printf("\n✅ 扫描完成，结果已保存至 %s\n", *outputFile)
+    return nil
 }
+
 
 func resultHandler() {
 	for res := range resultsChan {
@@ -415,25 +590,43 @@ func worker(ctx context.Context, wg *sync.WaitGroup, ips <-chan string) {
 }
 
 func checkPort(ip string) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), timeout)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
+    d := net.Dialer{Timeout: timeout}
+    conn, err := d.Dial("tcp", fmt.Sprintf("%s:%d", ip, port))
+    if err != nil {
+        return false
+    }
+    conn.Close()
+    return true
 }
 
 func checkOllama(ip string) bool {
-	resp, err := httpClient.Get(fmt.Sprintf("http://%s:%d", ip, port))
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return false
-	}
-	defer resp.Body.Close()
-	buf := make([]byte, 1024)
-	n, _ := resp.Body.Read(buf)
-	return strings.Contains(string(buf[:n]), "Ollama is running")
-}
+    ctx, cancel := context.WithTimeout(context.Background(), timeout)
+    defer cancel()
 
+    req, err := http.NewRequestWithContext(ctx, "GET", 
+        fmt.Sprintf("http://%s:%d", ip, port), nil)
+    if err != nil {
+        return false
+    }
+
+    resp, err := httpClient.Do(req)
+    if err != nil {
+        return false
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return false
+    }
+
+    buf := make([]byte, 1024)
+    n, err := resp.Body.Read(buf)
+    if err != nil && err != io.EOF {
+        return false
+    }
+
+    return strings.Contains(string(buf[:n]), "Ollama is running")
+}
 func getModels(ip string) []string {
 	resp, err := httpClient.Get(fmt.Sprintf("http://%s:%d/api/tags", ip, port))
 	if err != nil || resp.StatusCode != http.StatusOK {
