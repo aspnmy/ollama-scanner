@@ -1,0 +1,11 @@
+{
+  "scanned_ips": {},
+  "last_scan_time": "2025-02-15T21:51:08.370886018-05:00",
+  "total_ips": 0,
+  "config": {
+    "gateway_mac": "00:16:3c:64:6b:8a",
+    "input_file": "/root/gitdata/ollama_scanner/Src/ip.txt",
+    "output_file": "/root/gitdata/ollama_scanner/Releases/v2.2.1-r1/linux/results.csv",
+    "disable_bench": false
+  }
+}

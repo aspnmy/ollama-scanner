@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -58,21 +59,22 @@ const (
 
 var (
     port = defaultPort      // 将 port 改为变量
-    gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
-    inputFile   = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
-    outputFile  = flag.String("output", defaultCSVFile, "CSV输出文件路径")
-    disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
-    benchPrompt = flag.String("prompt", defaultBenchPrompt, "性能测试提示词")
     httpClient  *http.Client
     csvWriter   *csv.Writer
     csvFile     *os.File
-    zmapThreads *int    // zmap 线程数
     resultsChan chan ScanResult
     allResults  []ScanResult
     mu          sync.Mutex
     scannerType string  // 扫描器类型 (zmap/masscan)
-    masscanRate = flag.Int("rate", defaultMasscanRate, "masscan 扫描速率 (每秒扫描的包数)")
     config      Config
+    // 移除这里的初始化，只声明变量
+    gatewayMAC   *string
+    inputFile    *string
+    outputFile   *string
+    disableBench *bool
+    benchPrompt  *string
+    zmapThreads  *int
+    masscanRate  *int
 )
 
 // 选择合适的扫描器并初始化
@@ -128,7 +130,7 @@ func checkAndInstallMasscan() error {
                     return fmt.Errorf("安装 masscan 失败: %w", err)
                 }
             } else {
-                return fmt.Errorf("无法找到包管理器")
+                return fmt.Errorf("未找到包管理器")
             }
         }
     default:
@@ -141,7 +143,15 @@ func checkAndInstallMasscan() error {
 
 // 修改 loadConfig 函数
 func loadConfig() error {
-    data, err := os.ReadFile(".env")
+    scriptDir, err := getScriptDir()
+    if err != nil {
+        log.Printf("获取脚本目录失败: %v, 使用当前目录", err)
+        scriptDir = "."
+    }
+
+    // 尝试读取配置文件
+    configPath := filepath.Join(scriptDir, ".env")
+    data, err := os.ReadFile(configPath)
     if err != nil {
         if os.IsNotExist(err) {
             // 如果配置文件不存在,尝试获取 eth0 的 MAC 地址
@@ -150,12 +160,12 @@ func loadConfig() error {
                 log.Printf("自动获取MAC地址失败: %v", err)
             }
             
-            // 创建默认配置
+            // 创建默认配置，使用相对于脚本目录的路径
             config = Config{
                 Port:         port,
-                GatewayMAC:   mac, // 使用获取到的 MAC 地址
-                InputFile:    "ip.txt",
-                OutputFile:   defaultCSVFile,
+                GatewayMAC:   mac,
+                InputFile:    filepath.Join(scriptDir, "ip.txt"),
+                OutputFile:   filepath.Join(scriptDir, defaultCSVFile),
                 ZmapThreads:  defaultZmapThreads,
                 MasscanRate:  defaultMasscanRate,
                 DisableBench: false,
@@ -167,8 +177,18 @@ func loadConfig() error {
         return fmt.Errorf("读取配置文件失败: %w", err)
     }
 
+    // 解析配置文件
     if err := json.Unmarshal(data, &config); err != nil {
         return fmt.Errorf("解析配置文件失败: %w", err)
+    }
+
+    // 处理配置文件中的路径
+    // 如果配置文件中的路径是相对路径，则相对于配置文件所在目录处理
+    if !filepath.IsAbs(config.InputFile) {
+        config.InputFile = filepath.Join(scriptDir, config.InputFile)
+    }
+    if (!filepath.IsAbs(config.OutputFile)) {
+        config.OutputFile = filepath.Join(scriptDir, config.OutputFile)
     }
 
     // 如果配置中的 GatewayMAC 为空,尝试获取 eth0 的 MAC 地址
@@ -178,7 +198,6 @@ func loadConfig() error {
             log.Printf("自动获取MAC地址失败: %v", err)
         } else {
             config.GatewayMAC = mac
-            // 保存更新后的配置
             if err := saveConfig(); err != nil {
                 log.Printf("保存更新后的配置失败: %v", err)
             }
@@ -214,7 +233,13 @@ func saveConfig() error {
         return fmt.Errorf("序列化配置失败: %w", err)
     }
 
-    if err := os.WriteFile(".env", data, 0644); err != nil {
+    scriptDir, err := getScriptDir()
+    if err != nil {
+        return fmt.Errorf("获取脚本目录失败: %w", err)
+    }
+
+    configPath := filepath.Join(scriptDir, ".env")
+    if err := os.WriteFile(configPath, data, 0644); err != nil {
         return fmt.Errorf("保存配置文件失败: %w", err)
     }
 
@@ -234,7 +259,7 @@ type ModelInfo struct {
 }
 
 func init() {
-    // 命令行参数仍然保留,但作为覆盖配置文件的选项
+    // 初始化命令行参数的默认值
     gatewayMAC = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
     inputFile = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
     outputFile = flag.String("output", defaultCSVFile, "CSV输出文件路径")
@@ -276,14 +301,14 @@ Masscan参数 (Windows):
 
     // 加载配置文件
     if err := loadConfig(); err != nil {
-        log.Printf("加载配置文件失败: %v, 使用默认配置", err)
+        log.Printf("加载配置失败: %v, 使用默认配置", err)
     }
 
     httpClient = &http.Client{
         Transport: &http.Transport{
-            MaxIdleConns:    maxIdleConns,
+            MaxIdleConns:        maxIdleConns,
             MaxIdleConnsPerHost: maxIdleConns,
-            IdleConnTimeout: idleConnTimeout,
+            IdleConnTimeout:     idleConnTimeout,
         },
         Timeout: timeout,
     }
@@ -339,7 +364,7 @@ func (p *Progress) printProgress() {
     if p.current > 0 {
         remainingTime = time.Duration(float64(elapsed) / float64(p.current) * float64(p.total-p.current))
     }
-    fmt.Printf("\r进度: %.1f%% (%d/%d) 已用时间: %v 预计剩余: %v", 
+    fmt.Printf("\r当前进度: %.1f%% (%d/%d) 已用时: %v 预计剩余: %v", 
         percentage, p.current, p.total, elapsed.Round(time.Second), remainingTime.Round(time.Second))
 }
 
@@ -507,16 +532,16 @@ func checkAndInstallZmap() error {
 		// 在 macOS 系统上,使用 brew 安装 zmap
 		_, brewErr := exec.LookPath("brew")
 		if brewErr != nil {
-			return fmt.Errorf("brew is not installed, cannot install zmap automatically. Please install manually")
+			return fmt.Errorf("未安装 brew，无法自动安装 zmap。请手动安装")
 		}
 
 		cmd = exec.Command("brew", "install", "zmap")
 		installErr = cmd.Run()
 		if installErr != nil {
-			return fmt.Errorf("brew install zmap failed: %w", installErr)
+			return fmt.Errorf("使用 brew 安装 zmap 失败: %w", installErr)
 		}
 	default:
-		return fmt.Errorf("unsupported operating system: %s, cannot install zmap automatically. Please install manually", osName)
+		return fmt.Errorf("不支持的操作系统: %s，无法自动安装 zmap。请手动安装", osName)
 	}
 
 	log.Println("zmap 安装完成")
@@ -540,7 +565,7 @@ func initCSVWriter() {
 	// 定义 CSV 文件的表头
 	headers := []string{"IP地址", "模型名称", "状态"}
 	// 如果未禁用性能基准测试,则在表头中添加额外的列
-	if !*disableBench {
+	if (!*disableBench) {
 		// 添加首Token延迟和Tokens/s列
 		headers = append(headers, "首Token延迟(ms)", "Tokens/s")
 	}
@@ -555,7 +580,7 @@ func setupSignalHandler(cancel context.CancelFunc) {
     go func() {
         <-sigCh
         cancel()
-        fmt.Println("\n🛑 收到终止信号,正在清理资源...")
+        fmt.Println("\n⚠️ 收到终止信号，正在保存进度...")
         if csvWriter != nil {
             csvWriter.Flush()
         }
@@ -572,13 +597,15 @@ func runScanProcess(ctx context.Context) error {
         return err
     }
 
-    fmt.Printf("🔍 开始扫描,使用网关: %s\n", *gatewayMAC)
+    fmt.Printf("🔍 开始扫描目标，使用网关MAC: %s\n", *gatewayMAC)
     if err := execScan(); err != nil {
         return err
     }
 
     return processResults(ctx)
 }
+
+// ...existing code...
 
 func validateInput() error {
     // 如果命令行参数中未指定 MAC 地址,尝试获取 eth0 的 MAC 地址
@@ -591,12 +618,72 @@ func validateInput() error {
         log.Printf("自动使用 eth0 网卡 MAC 地址: %s", mac)
     }
 
+    // 获取脚本所在目录
+    scriptDir, err := getScriptDir()
+    if err != nil {
+        return fmt.Errorf("获取脚本目录失败: %v", err)
+    }
+
+    // 优先使用命令行参数中的路径
+    // 如果命令行参数是相对路径且配置文件中有绝对路径，则使用配置文件中的路径
+    if !filepath.IsAbs(*inputFile) {
+        if filepath.IsAbs(config.InputFile) {
+            *inputFile = config.InputFile
+        } else {
+            *inputFile = filepath.Join(scriptDir, *inputFile)
+        }
+    }
+    log.Printf("使用输入文件: %s", *inputFile)
+
+    if !filepath.IsAbs(*outputFile) {
+        if filepath.IsAbs(config.OutputFile) {
+            *outputFile = config.OutputFile
+        } else {
+            *outputFile = filepath.Join(scriptDir, *outputFile)
+        }
+    }
+    log.Printf("使用输出文件: %s", *outputFile)
+
+    // 检查输入文件是否存在
     if _, err := os.Stat(*inputFile); os.IsNotExist(err) {
-        return fmt.Errorf("输入文件不存在: %s", *inputFile)
+        // 如果文件不存在，创建一个空文件
+        emptyFile, err := os.Create(*inputFile)
+        if err != nil {
+            return fmt.Errorf("创建输入文件失败: %v", err)
+        }
+        emptyFile.Close()
+        log.Printf("创建了空的输入文件: %s", *inputFile)
+        return fmt.Errorf("请在输入文件中添加要扫描的IP地址: %s", *inputFile)
     }
 
     return nil
 }
+
+// 获取脚本所在目录的新函数
+func getScriptDir() (string, error) {
+    // 尝试使用 os.Executable() 获取可执行文件路径
+    execPath, err := os.Executable()
+    if err != nil {
+        return "", fmt.Errorf("获取可执行文件路径失败: %v", err)
+    }
+
+    // 获取可执行文件的实际路径（处理符号链接）
+    realPath, err := filepath.EvalSymlinks(execPath)
+    if err != nil {
+        return "", fmt.Errorf("解析符号链接失败: %v", err)
+    }
+
+    // 获取目录路径
+    dir := filepath.Dir(realPath)
+    
+    // 验证目录是否存在
+    if _, err := os.Stat(dir); os.IsNotExist(err) {
+        return "", fmt.Errorf("脚本目录不存在: %v", err)
+    }
+
+    return dir, nil
+}
+
 func execScan() error {
     if scannerType == "masscan" {
         return execMasscan()
@@ -777,7 +864,7 @@ func processResults(ctx context.Context) error {
         log.Printf("保存最终扫描状态失败: %v", err)
     }
 
-    fmt.Printf("\n✅ 扫描完成,结果已保存至 %s\n", *outputFile)
+    fmt.Printf("\n✅ 扫描完成，结果已保存到: %s\n", *outputFile)
     return nil
 }
 
@@ -794,7 +881,7 @@ func printResult(res ScanResult) {
 	fmt.Println(strings.Repeat("-", 50))
 	for _, model := range res.Models {
 		fmt.Printf("├─ 模型: %-25s\n", model.Name)
-		if !*disableBench {
+		if (!*disableBench) {
 			fmt.Printf("│ ├─ 状态: %s\n", model.Status)
 			fmt.Printf("│ ├─ 首Token延迟: %v\n", model.FirstTokenDelay.Round(time.Millisecond))
 			fmt.Printf("│ └─ 生成速度: %.1f tokens/s\n", model.TokensPerSec)
@@ -960,7 +1047,7 @@ func benchmarkModel(ip, model string) (time.Duration, float64, string) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, 0, fmt.Sprintf("HTTP %d", resp.StatusCode)
+		return 0, 0, fmt.Sprintf("HTTP错误: %d", resp.StatusCode)
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -988,9 +1075,25 @@ func benchmarkModel(ip, model string) (time.Duration, float64, string) {
 	}
 
 	if tokenCount == 0 {
-		return 0, 0, "无有效响应"
+		return 0, 0, "无响应"
 	}
 
 	totalTime := lastToken.Sub(start)
-	return firstToken.Sub(start), float64(tokenCount)/totalTime.Seconds(), "成功"
+	return firstToken.Sub(start), float64(tokenCount)/totalTime.Seconds(), "完成"
+}
+
+// 获取可执行文件所在目录
+func getExecutableDir() (string, error) {
+    // 获取可执行文件路径
+    execPath, err := os.Executable()
+    if (err != nil) {
+        return "", err
+    }
+    // 获取符号链接指向的真实路径
+    realPath, err := filepath.EvalSymlinks(execPath)
+    if (err != nil) {
+        return "", err
+    }
+    // 返回目录部分
+    return filepath.Dir(realPath), nil
 }

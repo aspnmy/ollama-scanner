@@ -4,7 +4,7 @@ BINARY_NAME_MONGODB := ollama_scanner_mongoDB
 
 # 定义发布目录和版本
 BIN_DIR := Releases
-BIN_VER ?= v2.2.1
+BIN_VER ?= v2.2.1-r1
 
 # 定义 Go 命令和编译参数
 GO := go

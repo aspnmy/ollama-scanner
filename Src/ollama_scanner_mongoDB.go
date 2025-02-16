@@ -62,23 +62,24 @@ const (
 
 var (
     port = defaultPort      // 将 port 改为变量
-    gatewayMAC  = flag.String("gateway-mac", "", "指定网关MAC地址(格式:aa:bb:cc:dd:ee:ff)")
-    inputFile   = flag.String("input", "ip.txt", "输入文件路径(CIDR格式列表)")
-    outputFile  = flag.String("output", defaultCSVFile, "CSV输出文件路径")
-    disableBench = flag.Bool("no-bench", false, "禁用性能基准测试")
-    benchPrompt = flag.String("prompt", defaultBenchPrompt, "性能测试提示词")
     httpClient  *http.Client
     csvWriter   *csv.Writer
     csvFile     *os.File
-    zmapThreads *int    // zmap 线程数
     resultsChan chan ScanResult
     allResults  []ScanResult
     mu          sync.Mutex
     scannerType string  // 扫描器类型 (zmap/masscan)
-    masscanRate = flag.Int("rate", defaultMasscanRate, "masscan 扫描速率 (每秒扫描的包数)")
     config      Config
     mongoClient *mongo.Client
     useMongoDB  bool
+    // 移除这里的初始化，只声明变量
+    gatewayMAC   *string
+    inputFile    *string
+    outputFile   *string
+    disableBench *bool
+    benchPrompt  *string
+    zmapThreads  *int
+    masscanRate  *int
 )
 
 // 选择合适的扫描器并初始化
@@ -156,17 +157,24 @@ func loadConfig() error {
                 log.Printf("自动获取MAC地址失败: %v", err)
             }
             
-            // 创建默认配置
+            // 获取当前工作目录
+            currentDir, err := os.Getwd()
+            if err != nil {
+                log.Printf("获取当前工作目录失败: %v", err)
+                currentDir = "."
+            }
+            
+            // 创建默认配置，使用绝对路径
             config = Config{
                 Port:         port,
-                GatewayMAC:   mac, // 使用获取到的 MAC 地址
-                InputFile:    "ip.txt",
+                GatewayMAC:   mac,
+                InputFile:    currentDir + "/ip.txt", // 使用完整路径
                 OutputFile:   defaultCSVFile,
                 ZmapThreads:  defaultZmapThreads,
                 MasscanRate:  defaultMasscanRate,
                 DisableBench: false,
                 BenchPrompt:  defaultBenchPrompt,
-                MongoDBURI:   "",
+                MongoDBURI:   "", // MongoDB 版本特有
             }
             // 保存默认配置
             return saveConfig()
@@ -616,6 +624,7 @@ func runScanProcess(ctx context.Context) error {
     return processResults(ctx)
 }
 
+// validateInput 函数与标准版相同的修改
 func validateInput() error {
     // 如果命令行参数中未指定 MAC 地址,尝试获取 eth0 的 MAC 地址
     if *gatewayMAC == "" {
@@ -627,12 +636,22 @@ func validateInput() error {
         log.Printf("自动使用 eth0 网卡 MAC 地址: %s", mac)
     }
 
+    // 检查输入文件是否存在，如果是相对路径则转换为绝对路径
+    if !strings.HasPrefix(*inputFile, "/") {
+        currentDir, err := os.Getwd()
+        if err != nil {
+            return fmt.Errorf("获取当前工作目录失败: %v", err)
+        }
+        *inputFile = currentDir + "/" + *inputFile
+    }
+
     if _, err := os.Stat(*inputFile); os.IsNotExist(err) {
         return fmt.Errorf("输入文件不存在: %s", *inputFile)
     }
 
     return nil
 }
+
 func execScan() error {
     if scannerType == "masscan" {
         return execMasscan()

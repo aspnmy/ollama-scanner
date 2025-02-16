@@ -1,6 +1,6 @@
 module ollama_scanner
 
-go 1.19
+go 1.23.6
 
 require go.mongodb.org/mongo-driver v1.17.2
 
