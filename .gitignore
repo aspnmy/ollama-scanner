@@ -31,3 +31,4 @@ vendor
 *.log
 *.log.*
 logs
+test
