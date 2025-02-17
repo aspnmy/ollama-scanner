@@ -1,1 +1,2 @@
 [2025-02-17 13:32:48] 重构 Git 钩子，删除 post-commit 脚本并添加 pre-commit 脚本以简化日志记录和环境设置 (Jod Aspnmy)
+[2025-02-17 13:45:11] ollama_scanner: 移除 pre-commit 钩子中的多余换行符 (Jod Aspnmy)

@@ -32,3 +32,4 @@ vendor
 *.log.*
 logs
 testlogs/changelog
+logs/changelog
