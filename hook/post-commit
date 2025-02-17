@@ -1,50 +1,41 @@
 #!/bin/bash
 
-# 颜色定义
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
 # 开启调试模式
 set -x
-
-# 添加调试日志
 exec 2>> /tmp/git-hook-debug.log
-# 重新加载环境变量组件以后再保证环境变量生效
+
+# 重新加载环境变量
 aspnmy_envloader reload
-# 确保 aspnmy_envloader 组件已加载（例如：source ~/.bashrc）
 source ~/.bashrc
-# 日志函数
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-# 初始化全局变量及组件必须变量
-init() {
- # 获取脚本所在目录
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    # 调用 get_config 函数获取组件必须变量
-    BASE_DIR=$(get_config "ollama_scannerBaseDir")  # 项目根目录
-    LIB_DIR=$(get_config "ollama_scannerLibDir")     # 项目 lib 目录
-    LOG_DIR=$(get_config "LOG_DIR")
-    # 将可能包含 ~ 的 LIB_DIR 转换为绝对路径
-    BASE_DIR=$(eval echo "$BASE_DIR")
-    LIB_DIR=$(eval echo "$LIB_DIR")
-    LOG_DIR=$(eval echo "$LOG_DIR")
-    changelog_file="$LOG_DIR/changelog"
-    # 工具所在路径
-    env_loader_dir=${env_loader_dir:-"$LIB_DIR/env_loader/aspnmy_env"}  # 项目 env 路径
-    aspnmy_crypto_dir=${aspnmy_crypto_dir:-"$LIB_DIR/crypto/aspnmy_crypto"}  # 项目加密工具路径
-}
+
+
+# 获取必要的环境变量
+LOG_DIR=$(get_config "LOG_DIR")
+LOG_DIR=$(eval echo "$LOG_DIR")
 changelog_file="$LOG_DIR/changelog"
 
+# 确保日志目录存在
+mkdir -p "$LOG_DIR"
 
+# 获取暂存区的提交信息
+COMMIT_MSG=$(git log -n 1 --format=%B)
+if [ -z "$COMMIT_MSG" ]; then
+    # 如果是新提交，从暂存区获取信息
+    COMMIT_MSG=$(cat .git/COMMIT_EDITMSG 2>/dev/null || echo "no message")
+fi
 
-# 获取提交信息
-COMMIT_HASH=$(git rev-parse --short HEAD)
-COMMIT_MSG=$(git log -1 --pretty=%B)
-COMMIT_AUTHOR=$(git log -1 --pretty=%an)
-COMMIT_DATE=$(git log -1 --pretty=%ad --date=format:'%Y-%m-%d %H:%M:%S')
+COMMIT_AUTHOR=$(git config user.name)
+COMMIT_DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
 # 写入变更记录
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${COMMIT_HASH} - ${COMMIT_MSG} (${COMMIT_AUTHOR}, ${COMMIT_DATE})" >> "$changelog_file"
+echo "[${COMMIT_DATE}] ${COMMIT_MSG} (${COMMIT_AUTHOR})" >> "$changelog_file"
 
 # 设置文件权限
 chmod 644 "$changelog_file"
+
+# 把 changelog 文件添加到 .gitignore
+if ! grep -q "^logs/changelog$" .gitignore; then
+    echo "logs/changelog" >> .gitignore
+fi
+
+exit 0
