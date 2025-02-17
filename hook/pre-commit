@@ -5,15 +5,19 @@ set -x
 exec 2>> /tmp/git-hook-debug.log
 
 # 重新加载环境变量
-aspnmy_envloader reload
 source ~/.bashrc
-
+aspnmy_envloader reload
 
 # 获取必要的环境变量
 LOG_DIR=$(get_config "LOG_DIR")
 LOG_DIR=$(eval echo "$LOG_DIR")
 changelog_file="$LOG_DIR/changelog"
 
+# 确保日志目录存在
+mkdir -p "$LOG_DIR"
+
+# 获取Git项目名称
+REPO_NAME=$(basename -s .git $(git config --get remote.origin.url 2>/dev/null) || basename $(git rev-parse --show-toplevel))
 
 # 获取暂存区的提交信息
 COMMIT_MSG=$(git log -n 1 --format=%B)
@@ -25,8 +29,8 @@ fi
 COMMIT_AUTHOR=$(git config user.name)
 COMMIT_DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
-# 写入变更记录
-echo "[${COMMIT_DATE}] ${COMMIT_MSG} (${COMMIT_AUTHOR})" >> "$changelog_file"
+# 写入变更记录（添加项目名称）
+echo "[${COMMIT_DATE}] ${REPO_NAME}: ${COMMIT_MSG} (${COMMIT_AUTHOR})" >> "$changelog_file"
 
 # 设置文件权限
 chmod 644 "$changelog_file"
