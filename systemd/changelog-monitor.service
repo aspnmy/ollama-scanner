@@ -1,14 +1,14 @@
 [Unit]
-Description=Ollama Scanner Changelog Monitor
+Description=Changelog Monitor Service
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/gitdata/ollama_scanner/scripts
-ExecStart=/root/gitdata/ollama_scanner/scripts/changelog_monitor.sh
+WorkingDirectory=/root/gitdata/ollama_scanner
+ExecStart=/bin/bash /root/gitdata/ollama_scanner/scripts/changelog_monitor.sh
 Restart=always
-RestartSec=30
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
