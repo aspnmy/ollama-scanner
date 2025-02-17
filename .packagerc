@@ -1,0 +1,35 @@
+# 打包配置文件
+PACKAGE_NAME="aspnmy_project"
+VERSION="1.0.0"
+
+# 需要打包的目录和文件
+INCLUDE_DIRS=(
+    "bin"
+    "scripts"
+    "docs"
+    "config"
+)
+
+# 需要打包的具体文件
+INCLUDE_FILES=(
+    "README.md"
+    ".env.example"
+)
+
+# 需要排除的模式
+EXCLUDE_PATTERNS=(
+    "*.log"
+    "*.tmp"
+    "*.swp"
+    ".git"
+    "build"
+    "node_modules"
+)
+
+# 构建信息
+BUILD_INFO=(
+    "BUILD_USER=root"
+    "BUILD_TIME=2025-02-17 05:57:45"
+    "BUILD_VERSION=1.0.0"
+    "BUILD_COMMIT=b3d6e1b"
+)

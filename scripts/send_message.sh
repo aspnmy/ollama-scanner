@@ -1,38 +1,48 @@
 #!/bin/bash
 
-# 加载环境变量
-source "$(dirname "$0")/load_env.sh"
-load_env
+# 颜色定义
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+# 重新加载环境变量组件以后再保证环境变量生效
+aspnmy_envloader reload
+# 确保 aspnmy_envloader 组件已加载（例如：source ~/.bashrc）
+source ~/.bashrc
+# 日志函数
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 初始化全局变量
+# 初始化全局变量及组件必须变量
 init() {
-    # 获取脚本所在目录
+ # 获取脚本所在目录
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    # 获取项目根目录
-    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-    # 环境配置文件路径
-    ENV_FILE="$PROJECT_ROOT/.env"
+    # 调用 get_config 函数获取组件必须变量
+    BASE_DIR=$(get_config "ollama_scannerBaseDir")  # 项目根目录
+    LIB_DIR=$(get_config "ollama_scannerLibDir")     # 项目 lib 目录
+    # 将可能包含 ~ 的 LIB_DIR 转换为绝对路径
+    BASE_DIR=$(eval echo "$BASE_DIR")
+    LIB_DIR=$(eval echo "$LIB_DIR")
+    # 工具所在路径
+    env_loader_dir=${env_loader_dir:-"$LIB_DIR/env_loader/aspnmy_env"}  # 项目 env 路径
+    aspnmy_crypto_dir=${aspnmy_crypto_dir:-"$LIB_DIR/crypto/aspnmy_crypto"}  # 项目加密工具路径
 
-    # 检查环境配置文件是否存在
-    if [ ! -f "$ENV_FILE" ]; then
-        echo "错误: 环境配置文件不存在: $ENV_FILE"
+    # 检查加密工具是否存在并可执行
+    if [ ! -x "$aspnmy_crypto_dir" ]; then
+        echo "错误: 加密工具未找到或不可执行: $aspnmy_crypto_dir"
         exit 1
-    }
-
-    # 加载环境变量
-    set -a
-    source "$ENV_FILE"
-    set +a
-
-    # 验证必要的环境变量
-    if [ -z "$TELEGRAM_URI" ] || [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-        echo "错误: 缺少必要的环境变量配置"
-        exit 1
-    }
-
-    # 设置日志目录
-    LOG_DIR=${LOG_DIR:-"$PROJECT_ROOT/logs"}
+    fi
+    # 日志所在目录
+    LOG_DIR=${LOG_DIR:-"$BASE_DIR/logs"}
     mkdir -p "$LOG_DIR"
+    
+    # tg相关变量
+    TELEGRAM_URI=$(get_config "TELEGRAM_URI")
+    encryptTOKEN=$(get_config "TELEGRAM_BOT_TOKEN")  # 加密的 token
+    TELEGRAM_CHAT_ID=$(get_config "TELEGRAM_CHAT_ID")
+
+    # 解密 token，注意使用双引号调用变量中的命令
+    decryp_token=$("$aspnmy_crypto_dir" decrypt "$encryptTOKEN")
+    #log_info "初始化组件变量: TELEGRAM_URI=$TELEGRAM_URI, TELEGRAM_BOT_TOKEN=$decryp_token, TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
 }
 
 # 记录日志
@@ -44,26 +54,23 @@ log_message() {
 
 # 发送 Telegram 消息
 send_telegram_message() {
-    local message=$1
-    
-    # 从 aspnmy 获取配置
-    local uri="${aspnmy[TELEGRAM_URI]}"
-    local token=$(get_sensitive_config TELEGRAM_BOT_TOKEN) || exit 1
-    local chat_id="${aspnmy[TELEGRAM_CHAT_ID]}"
-    
-    log_message "INFO" "正在发送消息: $message"
-    
+    local message="$1"
+    # 转义特殊字符
     message=$(echo "$message" | sed 's/"/\\"/g')
-    res=$(curl -s -X POST "$uri/bot$token/sendMessage" \
+  
+    log_info "正在发送消息到 Telegram..."
+    local res
+    res=$(curl -s -X POST "$TELEGRAM_URI/bot$decryp_token/sendMessage" \
         -H "Content-Type: application/json" \
-        --data-raw "{\"chat_id\":\"$chat_id\",\"text\":\"$message\"}")
-    
-    if [ $? -eq 0 ]; then
-        log_message "INFO" "消息发送成功: $res"
+        --data-raw "{\"chat_id\":\"$TELEGRAM_CHAT_ID\",\"text\":\"$message\"}")
+
+    if echo "$res" | grep -q "\"ok\":true"; then
+        log_info "消息发送成功"
+        return 0
     else
-        log_message "ERROR" "消息发送失败: $res"
+        log_error "消息发送失败: $res"
+        return 1
     fi
-    echo $res
 }
 
 # 显示使用帮助
@@ -102,23 +109,11 @@ parse_args() {
                 ;;
         esac
     done
-
-    # 验证参数
-    if [ -z "$CHANNEL" ] || [ -z "$MESSAGE" ]; then
-        echo "错误: 缺少必要参数"
-        show_usage
-        exit 1
-    fi
 }
 
 main() {
-    # 初始化全局变量
     init
-
-    # 解析命令行参数
     parse_args "$@"
-
-    # 根据渠道发送消息
     case "$CHANNEL" in
         "tg")
             send_telegram_message "$MESSAGE"
@@ -131,5 +126,5 @@ main() {
     esac
 }
 
-# 执行主函数，传入所有命令行参数
 main "$@"
+
