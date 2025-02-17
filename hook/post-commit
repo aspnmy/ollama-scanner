@@ -4,7 +4,11 @@
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
+# 开启调试模式
+set -x
 
+# 添加调试日志
+exec 2>> /tmp/git-hook-debug.log
 # 重新加载环境变量组件以后再保证环境变量生效
 aspnmy_envloader reload
 # 确保 aspnmy_envloader 组件已加载（例如：source ~/.bashrc）
