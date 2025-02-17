@@ -30,3 +30,4 @@ vendor
 *.csv
 *.log
 *.log.*
+logs
