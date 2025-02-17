@@ -33,3 +33,4 @@ vendor
 logs
 testlogs/changelog
 logs/changelog
+logs/*
