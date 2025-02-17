@@ -14,8 +14,6 @@ LOG_DIR=$(get_config "LOG_DIR")
 LOG_DIR=$(eval echo "$LOG_DIR")
 changelog_file="$LOG_DIR/changelog"
 
-# 确保日志目录存在
-mkdir -p "$LOG_DIR"
 
 # 获取暂存区的提交信息
 COMMIT_MSG=$(git log -n 1 --format=%B)
