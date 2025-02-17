@@ -39,5 +39,4 @@ chmod 644 "$changelog_file"
 if ! grep -q "^logs/changelog$" .gitignore; then
     echo "logs/changelog" >> .gitignore
 fi
-
 exit 0
