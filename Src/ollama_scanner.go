@@ -32,7 +32,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aspnmy/ollama_scanner_envmanager/Src/envmanager"
+	"github.com/aspnmy/ollama_scanner_envmanager"
 )
 
 const (
