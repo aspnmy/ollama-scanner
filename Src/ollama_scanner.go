@@ -141,7 +141,7 @@ func main() {
 	resultsChan = make(chan ScanResult, 100)
 
 	// 初始化扫描器
-	if err := initScanner(); err != nil {
+	if err := checkAndInstallZmap(); err != nil {
 		log.Printf("❌ 初始化扫描器失败: %v\n", err)
 		fmt.Printf("是否继续执行程序？(y/n): ")
 		var answer string
@@ -332,10 +332,13 @@ func runScanProcess(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
+		// Start goroutine to handle results
+		go handleScanResults()
 		if err := execScan(); err != nil {
 			return err
 		}
-		return processScanResults()
+		close(resultsChan)
+		return nil
 	}
 }
 
@@ -549,8 +552,8 @@ func execMasscan() error {
 	inputFile := os.Getenv("INPUT_FILE")
 	outputFile := os.Getenv("OUTPUT_FILE")
 	cmd := exec.Command("masscan",
-		"-p", fmt.Sprintf("%s", OLLAMA_PORT),
-		"--rate", fmt.Sprintf("%s", masscanRate),
+		"-p", OLLAMA_PORT,
+		"--rate", masscanRate,
 		"--interface", "eth0",
 		"--source-ip", gatewayMAC,
 		"-iL", inputFile,

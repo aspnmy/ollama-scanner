@@ -93,5 +93,10 @@ clean:
 	@rm -rf $(BIN_DIR)/$(BIN_VER)
 	@echo "清理完成"
 
+upmod:
+	@echo "正在更新依赖..."
+	@bash UpdateGoMod.sh
+	@echo "更新完成"
+
 # 定义伪目标，避免与实际文件冲突
-.PHONY: all build-all build-macos build-linux build-windows clean package _build_darwin _build_linux _build_windows
+.PHONY: all build-all build-macos build-linux build-windows clean package _build_darwin _build_linux _build_windows upmod
